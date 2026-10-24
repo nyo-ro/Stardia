@@ -32,12 +32,11 @@ try:
     chrome=next((p for p in [Path('C:/Program Files/Google/Chrome/Application/chrome.exe'),Path('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe')] if p.exists()),None)
     if chrome:
         for label,width,height in [('desktop',1440,1000),('mobile',390,844)]:
-            args=[str(chrome),'--headless','--disable-gpu','--no-first-run','--no-default-browser-check','--disable-background-networking',f'--user-data-dir={LOCAL/("browser-"+label)}',f'--window-size={width},{height}','--virtual-time-budget=10000']
-            dom=run(args+['--dump-dom',base+f'/tests/browser.html?width={width}'])
-            (LOCAL/f'browser-{label}.html').write_text(dom,encoding='utf-8')
-            if 'data-result="passed"' not in dom: raise RuntimeError(f'{label} browser check failed: '+dom[:2000])
-            print(f'PASS {label} real browser interactions')
-            run([str(chrome),'--headless','--disable-gpu','--no-first-run','--disable-background-networking',f'--user-data-dir={LOCAL/("preview-"+label)}',f'--window-size={width},{height}','--virtual-time-budget=3000',f'--screenshot={LOCAL/(label+".png")}',base+('/tests/preview.html' if label=='mobile' else '/dist/')])
+            profile=LOCAL/('browser-'+label)
+            common=[runtime,str(ROOT/'scripts/browser-check.mjs'),str(chrome)]
+            print(run(common+[base+f'/tests/browser.html?width={width}',str(profile),str(width),str(height),str(LOCAL/('browser-'+label))],env))
+            print(run(common+[base+'/tests/restart.html',str(profile),str(width),str(height),str(LOCAL/('restart-'+label))],env))
+            print(run(common+[base+'/dist/#demo',str(LOCAL/('preview-'+label)),str(width),str(height),str(LOCAL/label),'preview'],env))
     else: print('SKIP real browser checks: Chrome/Edge unavailable')
 finally:
     server.shutdown();server.server_close();thread.join()

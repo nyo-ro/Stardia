@@ -1,20 +1,14 @@
-import {validateRecord} from '../domain/study.js';
-// Async repository boundary; replace with IndexedDB in v0.0.2.
-export function createMemoryRepository(initial) {
-  let data = structuredClone(initial);
-  return {
-    async load() { return structuredClone(data); },
-    async setTaskStatus(id,status) {
-      if (!['unstarted','completed'].includes(status)) throw new Error('未対応の進捗です。');
-      const task=data.project.tasks.find(task=>task.id===id);
-      if (!task) throw new Error('学習項目が見つかりません。');
-      task.status=status;
-    },
-    async addRecord(input) {
-      const record=validateRecord(input,data.project.id);
-      const id=globalThis.crypto.randomUUID();
-      data.records.push({...record,id});
-      return id;
-    }
+import {applyCommand} from '../domain/commands.js';
+// Demo-only repository. Never reads from or writes to IndexedDB.
+export function createMemoryRepository(initial){
+  let data={...structuredClone(initial),projectId:initial.project.id,revision:initial.revision||0};
+  const repo={
+    async load(){return structuredClone(data);},
+    async mutate(command,expectedRevision){data=applyCommand(data,command,expectedRevision);return structuredClone(data);},
+    async close(){}
   };
+  // v0.0.1 test/API compatibility; persistent writers must use explicit revisions.
+  repo.setTaskStatus=(id,status)=>repo.mutate({type:'setTaskStatus',id,status},data.revision);
+  repo.addRecord=async input=>{const result=await repo.mutate({type:'addRecord',input},data.revision);return result.records.at(-1).id;};
+  return repo;
 }

@@ -1,0 +1,3 @@
+import {createIndexedDBRepository} from '../dist/src/storage/indexeddb.js';
+const result=document.getElementById('result');
+try{const repo=createIndexedDBRepository();const actual=await repo.load();if(JSON.stringify(actual)!==localStorage.getItem('stardia.test.expected'))throw Error('Data differs after browser process restart');if(!actual.project||actual.records.length<2||!actual.project.tasks.some(t=>t.status==='completed'))throw Error('Missing persisted data');await repo.close();result.textContent='PASS browser restart persistence';result.dataset.result='passed';}catch(e){result.textContent=e.stack;result.dataset.result='failed';}
