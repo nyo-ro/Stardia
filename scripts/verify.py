@@ -1,0 +1,44 @@
+"""Local-only checks; no Study access, installs, external network, or persistent servers."""
+from pathlib import Path
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+from functools import partial
+from threading import Thread
+import subprocess, shutil, os, urllib.request, sys
+ROOT=Path(__file__).resolve().parents[1]
+LOCAL=ROOT/'.local'
+LOCAL.mkdir(exist_ok=True)
+flags=getattr(subprocess,'CREATE_NO_WINDOW',0)
+def run(command,env=None):
+    result=subprocess.run(command,cwd=ROOT,env=env,capture_output=True,encoding='utf-8',errors='replace',creationflags=flags,timeout=90)
+    if result.returncode: raise RuntimeError(result.stdout+'\n'+result.stderr[-2500:])
+    return result.stdout
+runtime=shutil.which('node')
+env=os.environ.copy()
+if not runtime:
+    candidate=Path(os.environ.get('LOCALAPPDATA',''))/'Programs/Microsoft VS Code/Code.exe'
+    if not candidate.exists(): raise SystemExit('Node.js 22+ is required for unit tests.')
+    runtime=str(candidate);env['ELECTRON_RUN_AS_NODE']='1'
+print(run([runtime,str(ROOT/'tests/domain.test.mjs')],env))
+class QuietHandler(SimpleHTTPRequestHandler):
+    def log_message(self,*args): pass
+server=ThreadingHTTPServer(('127.0.0.1',0),partial(QuietHandler,directory=str(ROOT)))
+thread=Thread(target=server.serve_forever,daemon=True);thread.start()
+base=f'http://127.0.0.1:{server.server_port}'
+try:
+    for resource in ['dist/','dist/styles.css','dist/src/app.js','dist/src/domain/demo.js','dist/mark.svg']:
+        with urllib.request.urlopen(base+'/'+resource,timeout=5) as response:
+            assert response.status==200
+    print('PASS static HTTP serving including /dist/ subpath')
+    chrome=next((p for p in [Path('C:/Program Files/Google/Chrome/Application/chrome.exe'),Path('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe')] if p.exists()),None)
+    if chrome:
+        for label,width,height in [('desktop',1440,1000),('mobile',390,844)]:
+            args=[str(chrome),'--headless','--disable-gpu','--no-first-run','--no-default-browser-check','--disable-background-networking',f'--user-data-dir={LOCAL/("browser-"+label)}',f'--window-size={width},{height}','--virtual-time-budget=10000']
+            dom=run(args+['--dump-dom',base+f'/tests/browser.html?width={width}'])
+            (LOCAL/f'browser-{label}.html').write_text(dom,encoding='utf-8')
+            if 'data-result="passed"' not in dom: raise RuntimeError(f'{label} browser check failed: '+dom[:2000])
+            print(f'PASS {label} real browser interactions')
+            run([str(chrome),'--headless','--disable-gpu','--no-first-run','--disable-background-networking',f'--user-data-dir={LOCAL/("preview-"+label)}',f'--window-size={width},{height}','--virtual-time-budget=3000',f'--screenshot={LOCAL/(label+".png")}',base+('/tests/preview.html' if label=='mobile' else '/dist/')])
+    else: print('SKIP real browser checks: Chrome/Edge unavailable')
+finally:
+    server.shutdown();server.server_close();thread.join()
+print('Verification complete. Local test server stopped.')
