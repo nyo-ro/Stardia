@@ -1,3 +1,4 @@
+import {prepareUpdate,commitPrepared} from '../domain/ai.js';
 import {buildBackup,validateBackup,validatePreferences} from '../domain/backup.js';
 import {normalizePreferences} from './preferences.js';
 import {emptySnapshot,checkSnapshot,applyCommand,ConflictError} from '../domain/commands.js';
@@ -57,7 +58,7 @@ export function createIndexedDBRepository({projectId='default',dbName=DB_NAME,fa
       request.onsuccess=()=>{
         try{
           const current=request.result===undefined?emptySnapshot(projectId):checkSnapshot(request.result,projectId);
-          result=command?applyCommand(current,command,expectedRevision):current;
+          result=command?(command.type==='applyAIUpdate'?commitPrepared(current,command.prepared):applyCommand(current,command,expectedRevision)):current;
           if(command){if(command.type==='deleteProject')tx.objectStore(HISTORY).delete(projectId);store.put(result);const metaStore=tx.objectStore(META),q=metaStore.get('workspace');q.onsuccess=()=>{try{const meta=q.result||defaultMeta();meta.revision++;metaStore.put(meta);}catch(error){failure=error;try{tx.abort();}catch{}}};}
         }catch(error){failure=error;try{tx.abort();}catch{}}
       };
@@ -104,6 +105,7 @@ export function createIndexedDBRepository({projectId='default',dbName=DB_NAME,fa
   }
   return {
     load:()=>transaction(),
+    async applyAIUpdate(update){const prepared=await prepareUpdate(await transaction(),update);return transaction({type:'applyAIUpdate',prepared});},
     mutate:(command,expectedRevision)=>transaction(command,expectedRevision),
     initializePreferences:seed=>workspace('initialize',seed),
     savePreferences:(value,revision)=>workspace('settings',value,revision),

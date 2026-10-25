@@ -1,3 +1,5 @@
+import {runAIStorageTests} from './ai-storage.test.js';
+import {runAIUI} from './ai-ui.test.js';
 import {runModelStorageTests} from './model-storage.test.js';
 import {runModelUI} from './model-ui.test.js';
 import {runBackupTests} from './backup.test.js';
@@ -12,7 +14,7 @@ async function ready(frame){await until(()=>frame.contentDocument?.documentEleme
 async function submit(doc,kind,values){const form=doc.getElementById(kind+'-form');for(const [key,value]of Object.entries(values)){if(typeof value==='boolean')form.elements[key].checked=value;else form.elements[key].value=value;}form.requestSubmit();await until(()=>!doc.getElementById(kind+'-dialog').open||form.querySelector('.form-error').textContent,'form did not finish');}
 async function mount(hash=''){const f=document.createElement('iframe');f.style.width=new URLSearchParams(location.search).get('width')+'px';f.src='../dist/'+hash;document.body.append(f);await ready(f);f.contentWindow.confirm=()=>true;return f;}
 try {
- const modelTests=await runModelStorageTests();const storageTests=await runStorageTests();const backupTests=await runBackupTests();
+ const aiTests=await runAIStorageTests();const modelTests=await runModelStorageTests();const storageTests=await runStorageTests();const backupTests=await runBackupTests();
  localStorage.removeItem(STORAGE_KEY);
  await new Promise((resolve,reject)=>{const q=indexedDB.deleteDatabase(DB_NAME);q.onsuccess=resolve;q.onerror=()=>reject(q.error);q.onblocked=()=>reject(Error('unexpected open test database'));});
  const frame=await mount();let doc=frame.contentDocument;
@@ -60,9 +62,9 @@ try {
  const before=JSON.stringify(await repo.load());doc.querySelector('#add-record').click();await submit(doc,'record',{subject:'デモだけ',minutes:'5'});assert(JSON.stringify(await repo.load())===before,'demo isolated');
  frame.contentWindow.location.reload();await wait();await ready(frame);doc=frame.contentDocument;assert(!doc.querySelector('.recent-list').textContent.includes('デモだけ'),'demo resets');
  doc.querySelector('#switch-mode').click();await until(()=>doc.querySelector('#mode-label').textContent==='自分の学習','return real');assert(doc.querySelector('.recent-list').textContent.includes('更新した記録'),'real survives demo');
- await runModelUI(frame);doc=frame.contentDocument;
+ await runModelUI(frame);await runAIUI(frame);doc=frame.contentDocument;
  // Durable expected snapshot read by a separate Chrome process.
  snapshot=await repo.load();localStorage.setItem('stardia.test.expected',JSON.stringify(snapshot));await repo.close();
  doc.querySelector('#settings-toggle').click();assert(doc.querySelector('#settings').hidden,'settings collapsed');
- result.textContent=`PASS: ${modelTests} migration tests; GUI item/schedule flow; ${storageTests} IndexedDB tests; ${backupTests} backup tests; UI CRUD, errors, reload, demo isolation, two tabs`;result.dataset.result='passed';
+ result.textContent=`PASS: ${aiTests} AI storage tests; AI GUI flow; ${modelTests} migration tests; GUI item/schedule flow; ${storageTests} IndexedDB tests; ${backupTests} backup tests; UI CRUD, errors, reload, demo isolation, two tabs`;result.dataset.result='passed';
 } catch(error){result.textContent='FAIL: '+error.stack;result.dataset.result='failed';}

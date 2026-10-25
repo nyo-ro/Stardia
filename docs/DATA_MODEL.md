@@ -41,3 +41,9 @@ IDはプロジェクト内・エンティティ種別内で一意。関連付け
 旧project.tasksの各要素をStudyItemとStudyScheduleへ1対1で変換。両者のIDは旧task.idを使用する。名前はitemへ移し、date/minutes/required/statusはscheduleへ維持。archivedはfalse。descriptionは空、プロジェクトの任意日付はnull。記録のID・日時・内容・時間・メモは維持しitemId/scheduleIdをnullにする。同名タスクを自動統合しない。
 
 変換前後の件数・名前・日時・時間・必須フラグ・進捗・全記録フィールドを実行時に検証する。旧スナップショットは変更せず、変換結果を別オブジェクトとして構築する。
+
+## v0.0.5 AI更新契約
+
+保存スキーマは2のまま。StudyItem/StudySchedule/StudyRecordのフィールド・参照・アーカイブ方針は変更しない。AIの追加操作はJSON指定の新規IDを使用し、既存ID重複を拒否する。AI出力と更新は独立した形式バージョン1（[AI_JSON.md](AI_JSON.md)）。追加／更新対象は実績と予定のみで、項目・プロジェクトを自動作成しない。予定statusの変更を実績操作に暗黙連動させない。
+
+requestIdは更新依頼の識別用で保存エンティティではない。再適用の防止はプロジェクトrevision・全体SHA-256・追加ID・同内容検査で行う。永久の依頼台帳は持たないため、バックアップ形式を変更せず既存互換性を維持する。

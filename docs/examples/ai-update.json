@@ -1,0 +1,70 @@
+{
+  "type": "stardia_update",
+  "schemaVersion": 1,
+  "requestId": "example-request-001",
+  "projectId": "fictional-project",
+  "baseRevision": 5,
+  "baseDigest": "bf8e8e0b289c768ee5b0fc6c9ad829cc21513a3490aff7675612b39fbd0bd42f",
+  "operations": [
+    {
+      "type": "addRecord",
+      "id": "record-new-1",
+      "input": {
+        "date": "2032-10-26",
+        "subject": "例文の練習",
+        "minutes": 20,
+        "note": "架空の実績",
+        "itemId": "item-language",
+        "scheduleId": null
+      }
+    },
+    {
+      "type": "addRecord",
+      "id": "record-new-2",
+      "input": {
+        "date": "2032-10-27",
+        "subject": "発音の練習",
+        "minutes": 20,
+        "note": "架空の実績",
+        "itemId": "item-language",
+        "scheduleId": null
+      }
+    },
+    {
+      "type": "updateRecord",
+      "id": "record-edit",
+      "input": {
+        "date": "2032-10-25",
+        "subject": "語彙の確認",
+        "minutes": 25,
+        "note": "架空の実績",
+        "itemId": "item-language",
+        "scheduleId": null
+      }
+    },
+    {
+      "type": "addSchedule",
+      "id": "plan-new",
+      "input": {
+        "itemId": "item-language",
+        "date": "2032-10-29",
+        "minutes": 45,
+        "required": false
+      }
+    },
+    {
+      "type": "updateSchedule",
+      "id": "plan-edit",
+      "input": {
+        "itemId": "item-language",
+        "date": "2032-10-30",
+        "minutes": 40,
+        "required": true
+      }
+    },
+    {
+      "type": "deleteSchedule",
+      "id": "plan-delete"
+    }
+  ]
+}

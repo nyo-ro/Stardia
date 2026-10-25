@@ -1,0 +1,20 @@
+import {createIndexedDBRepository} from '../dist/src/storage/indexeddb.js';
+import {buildContext,canonical} from '../dist/src/domain/ai.js';
+const assert=(v,m)=>{if(!v)throw Error(m);};
+async function reject(fn){try{await fn();}catch{return;}throw Error('Expected rejection');}
+export async function runAIStorageTests(){
+ const dbName='stardia.ai.test.'+crypto.randomUUID(),a=createIndexedDBRepository({dbName}),b=createIndexedDBRepository({dbName});let count=0;
+ const test=async(name,fn)=>{try{await fn();count++;}catch(e){throw Error(name+': '+e.message);}};
+ try{
+ let s=await a.load();s=await a.mutate({type:'createProject',input:{name:'架空AI',goal:''}},s.revision);s=await a.mutate({type:'addItem',input:{title:'架空項目',description:''}},s.revision);const itemId=s.project.items[0].id;
+ const op=(id,date)=>({type:'addRecord',id,input:{date,subject:'AIテスト',minutes:17,note:'',itemId,scheduleId:null}});
+ const update=async ops=>({...((await buildContext(await a.load())).updateTemplate),operations:ops});
+ await test('atomic multi-day persistence and duplicate import',async()=>{const batch=await update([op('r1','2032-01-01'),op('r2','2032-01-02')]);await a.applyAIUpdate(batch);await a.close();const saved=await a.load();assert(saved.records.length===2,'not durable');await reject(()=>a.applyAIUpdate(batch));assert(canonical(await a.load())===canonical(saved),'duplicate changed data');});
+ await test('invalid last operation never persists earlier operations',async()=>{const before=await a.load();await reject(async()=>a.applyAIUpdate(await update([op('bad-first','2032-02-01'),{type:'deleteSchedule',id:'absent'}])));assert(canonical(await a.load())===canonical(before),'partial batch persisted');});
+ await test('failure after project put rolls back project and workspace metadata',async()=>{const before=await a.load(),backup=await a.exportBackup(),batch=await update([op('failure1','2032-02-01'),op('failure2','2032-02-02')]),put=IDBObjectStore.prototype.put;try{IDBObjectStore.prototype.put=function(value,...args){if(this.transaction.db.name===dbName&&this.name==='metadata')throw new DOMException('simulated full','QuotaExceededError');return put.call(this,value,...args);};await reject(()=>a.applyAIUpdate(batch));}finally{IDBObjectStore.prototype.put=put;}assert(canonical(await a.load())===canonical(before),'failed batch persisted');assert((await a.exportBackup()).revision===backup.revision,'workspace revision changed');});
+ await test('simultaneous tabs exactly one winner',async()=>{const batch=await update([op('winner','2032-03-01')]),before=await a.load();const outcomes=await Promise.allSettled([a.applyAIUpdate(batch),b.applyAIUpdate(batch)]);assert(outcomes.filter(x=>x.status==='fulfilled').length===1,'multiple winners');assert((await a.load()).records.length===before.records.length+1,'duplicate winner');});
+ await test('update between async preparation and transaction rejected',async()=>{const batch=await update([op('race','2032-04-01')]),original=crypto.subtle.digest.bind(crypto.subtle);let once=true;crypto.subtle.digest=async(...args)=>{if(once){once=false;const current=await b.load();await b.mutate({type:'updateItem',id:itemId,input:{title:'別タブ変更',description:''}},current.revision);}return original(...args);};try{await reject(()=>a.applyAIUpdate(batch));}finally{crypto.subtle.digest=original;}assert(!(await a.load()).records.some(r=>r.id==='race'),'stale prepared batch overwrote winner');});
+ await test('backup restore retains batch IDs and rejects repeated import',async()=>{const batch=await update([op('backed','2032-05-01')]);await a.applyAIUpdate(batch);const saved=await a.exportBackup();await a.restoreBackup(saved.backup,saved.revision);assert(canonical((await a.exportBackup()).backup.projects)===canonical(saved.backup.projects),'backup changed batch data');await reject(()=>a.applyAIUpdate(batch));});
+ }finally{await a.close();await b.close();await new Promise(resolve=>{indexedDB.deleteDatabase(dbName).onsuccess=resolve;});}
+ return count;
+}

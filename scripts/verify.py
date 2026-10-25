@@ -20,6 +20,7 @@ if not runtime:
     runtime=str(candidate);env['ELECTRON_RUN_AS_NODE']='1'
 print(run([runtime,str(ROOT/'tests/domain.test.mjs')],env))
 print(run([runtime,str(ROOT/'tests/model.test.mjs')],env))
+print(run([runtime,str(ROOT/'tests/ai.test.mjs')],env))
 class QuietHandler(SimpleHTTPRequestHandler):
     def log_message(self,*args): pass
 server=ThreadingHTTPServer(('127.0.0.1',0),partial(QuietHandler,directory=str(ROOT)))

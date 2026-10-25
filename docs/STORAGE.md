@@ -1,4 +1,4 @@
-# v0.0.4 保存・バックアップ設計
+# v0.0.5 保存・バックアップ設計
 
 ## IndexedDB
 
@@ -61,3 +61,15 @@ exportBackupはprojectsとmetadataを同じreadonly transactionで取得し、�
 デモはMemoryRepository専用。バックアップの読み書きは常に実IndexedDBを対象とし、デモ画面では操作ボタンを無効化する。表示設定は両モードで共通。
 
 最大10MB、最大1000プロジェクト。各プロジェクトの項目・予定・記録は各100000件以内。全体をメモリ上で処理するため巨大データ向けのストリーミング処理はない。完全バックアップはStardia形式のみで、旧Study JSONの直接取り込みは未実装。ブラウザ保存は手動消去やディスク故障に耐えるバックアップではなく、別途JSONを保管する必要がある。暗号化、クラウド同期、自動バックアップ、未知形式の自動修復は未実装。
+
+## AI一括更新（v0.0.5）
+
+DB version 3、snapshot schemaVersion 2、完全バックアップschemaVersion 2を維持。追加移行はない。
+
+`domain/ai.js`は形式検証・コンテキスト抽出・SHA-256・コピー上の差分計算を担当。`repository.applyAIUpdate`は最新snapshotをloadし、更新JSONのrevision/digestを照合して全操作を準備する。Web Cryptoは非同期なのでreadwrite transactionの外で実施する。
+
+その後、通常の保存transaction内で現在snapshotのcanonical表現と準備前のbaselineを比較する。この2回目の照合により、非同期準備中やタブ間の競合を検出する。全変更済みaggregateを1回putし、metadataのworkspace revisionを同じtransactionで1だけ進める。project revisionも1だけ進める。途中失敗は両方をrollbackする。設定と移行原本には変更を加えない。
+
+プレビュー時のデータ・準備結果を信頼してそのまま保存せず、確認後にもJSONから再検証する。学習項目改名・GUI操作・復元などによって更新元が変わったら拒否する。復元を含め既存のrevision/tombstone規則は維持する。AI更新後の全エンティティは通常バックアップで保持され、旧v1バックアップ読込も従来どおり。
+
+本形式は認証・署名ではない。改変された更新内容を許可するかは利用者のプレビュー承認で決定する。重複判定の範囲と制約は[AI_JSON.md](AI_JSON.md)を参照。

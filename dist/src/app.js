@@ -1,3 +1,4 @@
+import {mountAI} from './ui/ai.js';
 import {mountBackup} from './ui/backup.js';
 import {parseDate,localDate,mondayOf,plusDays,dateText,minText} from './domain/date.js';
 import {tasksOn,progress,summarize} from './domain/study.js';
@@ -35,7 +36,7 @@ function render() {
  $('mode-description').textContent=demo?'架空の体験環境です。操作は実データに影響せず、再読み込みでリセットされます。':'学習データはこのブラウザに保存します。別端末には同期されません。ブラウザのデータ消去にご注意ください。';
  $('switch-mode').textContent=demo?'自分の学習に戻る':'デモを試す';
  $('project-edit').textContent=data?.project?'プロジェクトを編集':'プロジェクト作成';
- $('project-edit').disabled=!available||busy;$('backup-open').disabled=demo||busy||!settingsReady;
+ $('project-edit').disabled=!available||busy;$('backup-open').disabled=demo||busy||!settingsReady;$('ai-open').disabled=demo||busy||!available||!data?.project;
  $('item-add').disabled=!available||!data?.project||busy;$('task-add').disabled=!available||!data?.project?.items.some(i=>!i.archived)||busy;renderItems();
  $('today-label').textContent=dateText(today);
  if(!data?.project){
@@ -58,8 +59,8 @@ function renderSettings() {
 }
 function lock(value){
  busy=value;
- for(const selector of ['#dashboard button','#dashboard input','#items-panel button','.workspace-tools button','#switch-mode','dialog button','#settings input','#backup-file','#restore-confirm'])for(const el of document.querySelectorAll(selector))el.disabled=value;
- if(!value){$('backup-open').disabled=demo||!settingsReady;$('project-edit').disabled=!available;$('item-add').disabled=!available||!data?.project;$('task-add').disabled=!available||!data?.project?.items.some(i=>!i.archived);}
+ for(const selector of ['#dashboard button','#dashboard input','#items-panel button','.workspace-tools button','#switch-mode','dialog button','#settings input','#backup-file','#restore-confirm','#ai-dialog input','#ai-dialog textarea','#ai-dialog select'])for(const el of document.querySelectorAll(selector))el.disabled=value;
+ if(!value){$('ai-open').disabled=demo||!available||!data?.project;$('backup-open').disabled=demo||!settingsReady;$('project-edit').disabled=!available;$('item-add').disabled=!available||!data?.project;$('task-add').disabled=!available||!data?.project?.items.some(i=>!i.archived);}
 }
 function showError(error,form){
  const message=storageMessage(error);$('save-status').textContent=message;$('save-status').dataset.error='true';
@@ -186,6 +187,7 @@ $('hidden-cards').addEventListener('click',async event=>{
  if(busy)return;const id=event.target.closest('[data-restore]')?.dataset.restore;if(!id)return;
  const next=structuredClone(preferences);next.visibility[id]=true;await persistPreferences(next);document.querySelector(`[data-card="${id}"]`)?.focus();
 });
+mountAI({repository:realRepository,isBusy:()=>busy,isDemo:()=>demo,lock,onError:showError,getDate:()=>selectedDate,onSaved:result=>{data=result;available=true;render();$('save-status').dataset.error='false';$('save-status').textContent='AI更新JSONの全件を保存しました。';}});
 mountBackup({repository:realRepository,isBusy:()=>busy,isDemo:()=>demo,lock,onError:showError,onRestore:result=>{
  data=result.data;preferences=result.meta.preferences;preferencesRevision=result.meta.preferencesRevision;settingsReady=true;available=true;applyTheme();renderSettings();render();$('save-status').dataset.error='false';$('save-status').textContent='学習環境を復元しました。';
 }});
