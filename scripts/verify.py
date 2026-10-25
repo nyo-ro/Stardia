@@ -10,7 +10,7 @@ LOCAL.mkdir(exist_ok=True)
 flags=getattr(subprocess,'CREATE_NO_WINDOW',0)
 def run(command,env=None):
     result=subprocess.run(command,cwd=ROOT,env=env,capture_output=True,encoding='utf-8',errors='replace',creationflags=flags,timeout=90)
-    if result.returncode: raise RuntimeError(result.stdout+'\n'+result.stderr[-2500:])
+    if result.returncode: raise RuntimeError(result.stdout+'\n'+result.stderr)
     return result.stdout
 runtime=shutil.which('node')
 env=os.environ.copy()
@@ -19,6 +19,7 @@ if not runtime:
     if not candidate.exists(): raise SystemExit('Node.js 22+ is required for unit tests.')
     runtime=str(candidate);env['ELECTRON_RUN_AS_NODE']='1'
 print(run([runtime,str(ROOT/'tests/domain.test.mjs')],env))
+print(run([runtime,str(ROOT/'tests/model.test.mjs')],env))
 class QuietHandler(SimpleHTTPRequestHandler):
     def log_message(self,*args): pass
 server=ThreadingHTTPServer(('127.0.0.1',0),partial(QuietHandler,directory=str(ROOT)))

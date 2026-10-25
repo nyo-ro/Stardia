@@ -1,3 +1,5 @@
+import {runModelStorageTests} from './model-storage.test.js';
+import {runModelUI} from './model-ui.test.js';
 import {runBackupTests} from './backup.test.js';
 import {STORAGE_KEY} from '../dist/src/storage/preferences.js';
 import {createIndexedDBRepository,DB_NAME} from '../dist/src/storage/indexeddb.js';
@@ -10,7 +12,7 @@ async function ready(frame){await until(()=>frame.contentDocument?.documentEleme
 async function submit(doc,kind,values){const form=doc.getElementById(kind+'-form');for(const [key,value]of Object.entries(values)){if(typeof value==='boolean')form.elements[key].checked=value;else form.elements[key].value=value;}form.requestSubmit();await until(()=>!doc.getElementById(kind+'-dialog').open||form.querySelector('.form-error').textContent,'form did not finish');}
 async function mount(hash=''){const f=document.createElement('iframe');f.style.width=new URLSearchParams(location.search).get('width')+'px';f.src='../dist/'+hash;document.body.append(f);await ready(f);f.contentWindow.confirm=()=>true;return f;}
 try {
- const storageTests=await runStorageTests();const backupTests=await runBackupTests();
+ const modelTests=await runModelStorageTests();const storageTests=await runStorageTests();const backupTests=await runBackupTests();
  localStorage.removeItem(STORAGE_KEY);
  await new Promise((resolve,reject)=>{const q=indexedDB.deleteDatabase(DB_NAME);q.onsuccess=resolve;q.onerror=()=>reject(q.error);q.onblocked=()=>reject(Error('unexpected open test database'));});
  const frame=await mount();let doc=frame.contentDocument;
@@ -24,9 +26,9 @@ try {
  frame.contentWindow.location.reload();await wait();await ready(frame);doc=frame.contentDocument;frame.contentWindow.confirm=()=>true;
  assert(doc.querySelector('#dashboard').textContent.includes('空の学習環境'),'deleted project not recreated');
  doc.querySelector('#project-edit').click();await submit(doc,'project',{name:'架空の永続テスト',goal:'テスト用'});
- doc.querySelector('#task-add').click();await submit(doc,'task',{title:'架空の計画',minutes:'20'});
+ doc.querySelector('#item-add').click();await submit(doc,'item',{title:'架空の計画',description:'項目説明'});doc.querySelector('[data-plan-item]').click();await submit(doc,'task',{minutes:'20'});
  const checkbox=doc.querySelector('[data-task]'),id=checkbox.dataset.task;checkbox.click();await until(()=>doc.querySelector('[data-task]').checked&&!doc.querySelector('[data-task]').disabled,'task saved');
- doc.querySelector('[data-edit-task]').click();await submit(doc,'task',{title:'更新した計画',minutes:'30'});assert(doc.querySelector('[data-task]').checked,'edit preserves progress');
+ doc.querySelector('[data-edit-task]').click();await submit(doc,'task',{minutes:'30'});assert(doc.querySelector('[data-task]').checked,'edit preserves progress');
  const viewDate=doc.querySelector('#view-date'),originalDate=viewDate.value;viewDate.value='2030-01-15';viewDate.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));assert(doc.querySelector('#card-today').textContent.includes('予定はありません'),'arbitrary date view');viewDate.value=originalDate;viewDate.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));
  doc.querySelector('#add-record').click();await submit(doc,'record',{subject:'<img src=x onerror=alert(1)>',minutes:'17',note:'架空テスト'});
  assert(doc.querySelector('.recent-list').textContent.includes('<img src=x'),'record text');assert(!doc.querySelector('.recent-list img'),'escaped HTML');
@@ -47,7 +49,7 @@ try {
  other.querySelector('#record-form [data-refresh]').click();await until(()=>other.querySelector('.recent-list').textContent.includes('タブA'),'refresh winner');
  assert(other.querySelector('#record-form').elements.subject.value==='タブB','draft survives refresh');
  await submit(other,'record',{});assert(!other.querySelector('#record-dialog').open,'reviewed retry succeeds');
- other.querySelector('#task-add').click();await submit(other,'task',{title:'削除する計画',minutes:'12'});
+ other.querySelector('#item-add').click();await submit(other,'item',{title:'削除する計画'});other.querySelectorAll('[data-plan-item]').item(other.querySelectorAll('[data-plan-item]').length-1).click();await submit(other,'task',{minutes:'12'});
  const taskButtons=[...other.querySelectorAll('[data-edit-task]')];taskButtons.at(-1).click();other.querySelector('#task-delete').click();await until(()=>!other.querySelector('#task-dialog').open,'task deleted');
  assert(!other.querySelector('#dashboard').textContent.includes('削除する計画'),'task absent');
  other.querySelector('#add-record').click();await submit(other,'record',{subject:'削除する記録',minutes:'12'});
@@ -58,8 +60,9 @@ try {
  const before=JSON.stringify(await repo.load());doc.querySelector('#add-record').click();await submit(doc,'record',{subject:'デモだけ',minutes:'5'});assert(JSON.stringify(await repo.load())===before,'demo isolated');
  frame.contentWindow.location.reload();await wait();await ready(frame);doc=frame.contentDocument;assert(!doc.querySelector('.recent-list').textContent.includes('デモだけ'),'demo resets');
  doc.querySelector('#switch-mode').click();await until(()=>doc.querySelector('#mode-label').textContent==='自分の学習','return real');assert(doc.querySelector('.recent-list').textContent.includes('更新した記録'),'real survives demo');
+ await runModelUI(frame);doc=frame.contentDocument;
  // Durable expected snapshot read by a separate Chrome process.
  snapshot=await repo.load();localStorage.setItem('stardia.test.expected',JSON.stringify(snapshot));await repo.close();
  doc.querySelector('#settings-toggle').click();assert(doc.querySelector('#settings').hidden,'settings collapsed');
- result.textContent=`PASS: ${storageTests} IndexedDB tests; ${backupTests} backup tests; UI CRUD, errors, reload, demo isolation, two tabs`;result.dataset.result='passed';
+ result.textContent=`PASS: ${modelTests} migration tests; GUI item/schedule flow; ${storageTests} IndexedDB tests; ${backupTests} backup tests; UI CRUD, errors, reload, demo isolation, two tabs`;result.dataset.result='passed';
 } catch(error){result.textContent='FAIL: '+error.stack;result.dataset.result='failed';}

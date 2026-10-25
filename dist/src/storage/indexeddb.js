@@ -2,7 +2,7 @@ import {buildBackup,validateBackup,validatePreferences} from '../domain/backup.j
 import {normalizePreferences} from './preferences.js';
 import {emptySnapshot,checkSnapshot,applyCommand,ConflictError} from '../domain/commands.js';
 export const DB_NAME='stardia.learning.v1';
-const STORE='projects',META='metadata';
+const STORE='projects',META='metadata',HISTORY='migrationBackups';
 const defaultMeta=()=>({key:'workspace',revision:0,preferencesRevision:0,preferences:normalizePreferences(null)});
 // One aggregate per project: revision check and all changes share ONE transaction.
 // No automatic data writes during open/load, and no fallback to memory on failure.
@@ -13,8 +13,26 @@ export function createIndexedDBRepository({projectId='default',dbName=DB_NAME,fa
     connection=new Promise((resolve,reject)=>{
       let request,settled=false;
       const fail=error=>{settled=true;reject(error);};
-      try {request=factory.open(dbName,2);}catch(error){fail(error);return;}
-      request.onupgradeneeded=()=>{try{if(!request.result.objectStoreNames.contains(STORE))request.result.createObjectStore(STORE,{keyPath:'projectId'});if(!request.result.objectStoreNames.contains(META))request.result.createObjectStore(META,{keyPath:'key'});}catch(error){fail(error);try{request.transaction?.abort();}catch{/* Already aborted. */}}};
+      try {request=factory.open(dbName,3);}catch(error){fail(error);return;}
+      request.onupgradeneeded=()=>{
+        const db=request.result,tx=request.transaction;
+        const abort=error=>{fail(error);try{tx.abort();}catch{}};
+        try{
+          if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'projectId'});
+          if(!db.objectStoreNames.contains(META))db.createObjectStore(META,{keyPath:'key'});
+          if(!db.objectStoreNames.contains(HISTORY))db.createObjectStore(HISTORY,{keyPath:'projectId'});
+          let changed=false;
+          const cursor=tx.objectStore(STORE).openCursor();
+          cursor.onsuccess=()=>{try{
+            const entry=cursor.result;
+            if(entry){
+              const original=entry.value,converted=checkSnapshot(original,original.projectId);
+              if(original.schemaVersion===1){tx.objectStore(HISTORY).put({projectId:original.projectId,sourceSchemaVersion:1,snapshot:original});entry.update({...converted,revision:original.revision+1});changed=true;}
+              entry.continue();
+            }else if(changed){const store=tx.objectStore(META),q=store.get('workspace');q.onsuccess=()=>{try{const meta=q.result||{...defaultMeta(),preferencesInitialized:false};meta.revision++;store.put(meta);}catch(error){abort(error);}};}
+          }catch(error){abort(error);}};
+        }catch(error){abort(error);}
+      };
       request.onblocked=()=>fail(new Error('別のタブがデータベースの更新を妨げています。他のStardiaタブを閉じて再読み込みしてください。'));
       request.onerror=()=>fail(request.error);
       request.onsuccess=()=>{
@@ -31,7 +49,7 @@ export function createIndexedDBRepository({projectId='default',dbName=DB_NAME,fa
     const db=await open();
     return new Promise((resolve,reject)=>{
       let tx,result,failure;
-      try {tx=db.transaction(command?[STORE,META]:STORE,command?'readwrite':'readonly');}catch(error){reject(error);return;}
+      try {tx=db.transaction(command?[STORE,META,HISTORY]:STORE,command?'readwrite':'readonly');}catch(error){reject(error);return;}
       tx.oncomplete=()=>resolve(structuredClone(result));
       tx.onabort=()=>reject(failure||tx.error||new Error('保存が中断されました。変更は保存されていません。'));
       tx.onerror=()=>{}; // request failures bubble and abort the entire transaction
@@ -40,7 +58,7 @@ export function createIndexedDBRepository({projectId='default',dbName=DB_NAME,fa
         try{
           const current=request.result===undefined?emptySnapshot(projectId):checkSnapshot(request.result,projectId);
           result=command?applyCommand(current,command,expectedRevision):current;
-          if(command){store.put(result);const metaStore=tx.objectStore(META),q=metaStore.get('workspace');q.onsuccess=()=>{try{const meta=q.result||defaultMeta();meta.revision++;metaStore.put(meta);}catch(error){failure=error;try{tx.abort();}catch{}}};}
+          if(command){if(command.type==='deleteProject')tx.objectStore(HISTORY).delete(projectId);store.put(result);const metaStore=tx.objectStore(META),q=metaStore.get('workspace');q.onsuccess=()=>{try{const meta=q.result||defaultMeta();meta.revision++;metaStore.put(meta);}catch(error){failure=error;try{tx.abort();}catch{}}};}
         }catch(error){failure=error;try{tx.abort();}catch{}}
       };
     });
@@ -49,7 +67,7 @@ export function createIndexedDBRepository({projectId='default',dbName=DB_NAME,fa
     const db=await open();
     return new Promise((resolve,reject)=>{
       let tx,result,failure;
-      try{tx=db.transaction([STORE,META],action==='export'?'readonly':'readwrite');}catch(error){reject(error);return;}
+      try{tx=db.transaction(action==='restore'?[STORE,META,HISTORY]:[STORE,META],action==='export'?'readonly':'readwrite');}catch(error){reject(error);return;}
       tx.oncomplete=()=>resolve(structuredClone(result));
       tx.onabort=()=>reject(failure||tx.error||new Error('処理が中断されました。元のデータは保持しています。'));
       const store=tx.objectStore(STORE),metaStore=tx.objectStore(META);
@@ -58,7 +76,7 @@ export function createIndexedDBRepository({projectId='default',dbName=DB_NAME,fa
         const projects=pq.result,meta=mq.result||defaultMeta();
         for(const p of projects)checkSnapshot(p,p.projectId);
         if(action==='initialize'){
-          if(!mq.result){meta.preferences=normalizePreferences(argument);meta.revision++;metaStore.put(meta);}
+          if(!mq.result||meta.preferencesInitialized===false){meta.preferences=normalizePreferences(argument);meta.preferencesInitialized=true;meta.revision++;metaStore.put(meta);}
           result=meta;return;
         }
         if(action==='settings'){
@@ -68,7 +86,7 @@ export function createIndexedDBRepository({projectId='default',dbName=DB_NAME,fa
         if(action==='export'){result={backup:buildBackup(projects,meta.preferences),revision:meta.revision,preferencesRevision:meta.preferencesRevision};return;}
         if(action==='restore'){
           if(expected!==meta.revision)throw new ConflictError();
-          const backup=validateBackup(argument),incoming=new Map(backup.projects.map(p=>[p.projectId,p]));
+          const backup=validateBackup(argument);tx.objectStore(HISTORY).clear();const incoming=new Map(backup.projects.map(p=>[p.projectId,p]));
           const existing=new Map(projects.map(p=>[p.projectId,p]));
           // Keep tombstones for removed projects so old tabs never regain revision 0.
           for(const key of new Set(['default',...existing.keys(),...incoming.keys()])){

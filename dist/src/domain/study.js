@@ -1,6 +1,6 @@
 import {parseDate} from './date.js';
 // Study's task progress / aggregation ideas, made project-scoped and explicit.
-export function tasksOn(project, date) { return project.tasks.filter(task => task.date === date); }
+export function tasksOn(project, date) { return project.schedules.filter(s=>!s.archived&&s.date===date).map(s=>({...s,title:project.items.find(i=>i.id===s.itemId)?.title||'項目不明'})); }
 export function progress(tasks) {
   const required = tasks.filter(task => task.required !== false);
   const completed = required.filter(task => task.status === 'completed').length;
