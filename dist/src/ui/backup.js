@@ -1,11 +1,10 @@
 import {parseBackup,backupSummary,MAX_BACKUP_BYTES} from '../domain/backup.js';
-export function mountBackup({repository,isBusy,isDemo,lock,onRestore,onError}){
+export function mountBackup({navigate,repository,isBusy,isDemo,lock,onRestore,onError}){
  const $=id=>document.getElementById(id);let pending=null;
  const status=message=>{$('backup-status').textContent=message;};
  function reset(){pending=null;$('restore-confirm').checked=false;$('restore-apply').disabled=true;$('restore-summary').textContent='';}
- $('backup-open').addEventListener('click',()=>{if(isBusy()||isDemo())return;reset();$('backup-file').value='';status('バックアップには実データと表示設定が含まれます。ファイルは大切に保管してください。');$('backup-dialog').showModal();});
- $('backup-dialog').addEventListener('cancel',event=>{if(isBusy())event.preventDefault();});
- $('backup-close').addEventListener('click',()=>{if(!isBusy())$('backup-dialog').close();});
+ status('完全復元は、現在の学習データと表示設定を一式置換します。内容を確認してから実行してください。');
+ $('backup-close').addEventListener('click',()=>{if(!isBusy())navigate('today');});
  $('backup-download').addEventListener('click',async()=>{
   if(isBusy()||isDemo())return;lock(true);
   try{const {backup}=await repository.exportBackup();const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json;charset=utf-8'});if(blob.size>MAX_BACKUP_BYTES)throw new Error('バックアップが10MBを超えています。現バージョンの復元上限を超えるため出力を中止しました。');const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`stardia-backup-${backup.createdAt.replace(/[:.]/g,'-')}.json`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);status('JSONのダウンロードを開始しました。保存先を確認してください。');}
@@ -24,4 +23,5 @@ export function mountBackup({repository,isBusy,isDemo,lock,onRestore,onError}){
   catch(error){status('復元できませんでした。元のデータは保持されています。ファイルを選び直して再確認してください。 '+error.message);onError(error);}
   finally{$('restore-confirm').checked=false;lock(false);$('restore-apply').disabled=true;}
  });
+ return {sync(){ $('restore-apply').disabled=isBusy()||isDemo()||!pending||!$('restore-confirm').checked; },clear(){reset();$('backup-file').value='';}};
 }

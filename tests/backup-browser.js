@@ -12,7 +12,7 @@ try{
   if(!data.records.length)data=await repo.mutate({type:'addRecord',input:{date:'2026-10-25',subject:'架空データ',minutes:15,note:'移行確認'}},data.revision);
   const meta=await repo.initializePreferences(normalizePreferences(null));await repo.savePreferences(normalizePreferences({theme:'dark',accent:'pink',visibility:{stats:false}}),meta.preferencesRevision);
  }
- const frame=document.createElement('iframe');frame.src='../dist/';frame.style.width='390px';frame.style.height='844px';document.body.append(frame);await until(()=>frame.contentDocument?.documentElement.dataset.ready==='true');const doc=frame.contentDocument;
+ const frame=document.createElement('iframe');frame.src='../dist/';frame.style.width='390px';frame.style.height='844px';document.body.append(frame);await until(()=>frame.contentDocument?.documentElement?.dataset.ready==='true');const doc=frame.contentDocument;
  doc.querySelector('#backup-open').click();
  if(mode==='export'){
   window.exportExpected=(await repo.exportBackup()).backup;
@@ -30,7 +30,7 @@ try{
   await select(text);const revision=(await repo.exportBackup()).revision;await apply();
   const restored=await repo.exportBackup();assert(restored.revision===revision+1,'double click commits once');assert(semantic(restored.backup)===semantic(backup),'cross-profile backup round trip matches');
   assert(doc.documentElement.dataset.theme==='dark','theme restored');assert(doc.querySelector('#card-stats').hidden,'visibility restored');assert(doc.documentElement.style.getPropertyValue('--accent')==='#bd377a','accent restored');
-  doc.querySelector('#backup-close').click();frame.contentWindow.location.reload();await until(()=>frame.contentDocument!==doc&&frame.contentDocument?.documentElement.dataset.ready==='true');const next=frame.contentDocument;assert(next.documentElement.dataset.theme==='dark'&&next.querySelector('#card-stats').hidden,'settings persist after restart');
+  doc.querySelector('#backup-close').click();frame.contentWindow.location.reload();await until(()=>frame.contentDocument!==doc&&frame.contentDocument?.documentElement?.dataset.ready==='true');const next=frame.contentDocument;assert(next.documentElement.dataset.theme==='dark'&&next.querySelector('#card-stats').hidden,'settings persist after restart');
   next.querySelector('#switch-mode').click();await until(()=>next.querySelector('#mode-label').textContent==='架空デモ');assert(next.querySelector('#backup-open').disabled,'demo cannot export/restore');assert(semantic((await repo.exportBackup()).backup)===semantic(backup),'demo excluded');
  }
  await repo.close();result.textContent='PASS actual JSON '+mode+' via separate browser profile';result.dataset.result='passed';

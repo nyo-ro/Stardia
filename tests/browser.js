@@ -1,3 +1,4 @@
+import {runNavigationUI} from './ui-navigation.test.js';
 import {runAIStorageTests} from './ai-storage.test.js';
 import {runAIUI} from './ai-ui.test.js';
 import {runModelStorageTests} from './model-storage.test.js';
@@ -10,7 +11,7 @@ const result=document.getElementById('result');
 const assert=(value,message)=>{if(!value)throw Error(message);};
 const wait=()=>new Promise(resolve=>setTimeout(resolve,40));
 async function until(fn,message){for(let i=0;i<150;i++){if(fn())return;await wait();}throw Error(message);}
-async function ready(frame){await until(()=>frame.contentDocument?.documentElement.dataset.ready==='true','Application did not become ready');}
+async function ready(frame){await until(()=>frame.contentDocument?.documentElement?.dataset.ready==='true','Application did not become ready');}
 async function submit(doc,kind,values){const form=doc.getElementById(kind+'-form');for(const [key,value]of Object.entries(values)){if(typeof value==='boolean')form.elements[key].checked=value;else form.elements[key].value=value;}form.requestSubmit();await until(()=>!doc.getElementById(kind+'-dialog').open||form.querySelector('.form-error').textContent,'form did not finish');}
 async function mount(hash=''){const f=document.createElement('iframe');f.style.width=new URLSearchParams(location.search).get('width')+'px';f.src='../dist/'+hash;document.body.append(f);await ready(f);f.contentWindow.confirm=()=>true;return f;}
 try {
@@ -18,24 +19,24 @@ try {
  localStorage.removeItem(STORAGE_KEY);
  await new Promise((resolve,reject)=>{const q=indexedDB.deleteDatabase(DB_NAME);q.onsuccess=resolve;q.onerror=()=>reject(q.error);q.onblocked=()=>reject(Error('unexpected open test database'));});
  const frame=await mount();let doc=frame.contentDocument;
- assert(doc.querySelector('h1').textContent==='学びのダッシュボード','Japanese UI');
+ assert(doc.querySelector('h1').textContent==='今日の学習','Japanese UI');
  assert(doc.documentElement.scrollWidth<=frame.contentWindow.innerWidth,'responsive');
  assert(frame.contentWindow.innerWidth===Number(new URLSearchParams(location.search).get('width')),'viewport');
- assert(doc.querySelector('#dashboard').textContent.includes('空の学習環境'),'new user empty');
+ assert(doc.querySelector('#onboarding').textContent.includes('空の学習環境'),'new user empty');
  doc.querySelector('#project-edit').click();await submit(doc,'project',{name:'架空の永続テスト',goal:'テスト用'});
  doc.querySelector('#project-edit').click();await submit(doc,'project',{name:'編集したプロジェクト',goal:'更新した目標'});
  doc.querySelector('#project-edit').click();doc.querySelector('#project-delete').click();await until(()=>!doc.querySelector('#project-dialog').open,'project deleted');
  frame.contentWindow.location.reload();await wait();await ready(frame);doc=frame.contentDocument;frame.contentWindow.confirm=()=>true;
- assert(doc.querySelector('#dashboard').textContent.includes('空の学習環境'),'deleted project not recreated');
+ assert(doc.querySelector('#onboarding').textContent.includes('空の学習環境'),'deleted project not recreated');
  doc.querySelector('#project-edit').click();await submit(doc,'project',{name:'架空の永続テスト',goal:'テスト用'});
- doc.querySelector('#item-add').click();await submit(doc,'item',{title:'架空の計画',description:'項目説明'});doc.querySelector('[data-plan-item]').click();await submit(doc,'task',{minutes:'20'});
- const checkbox=doc.querySelector('[data-task]'),id=checkbox.dataset.task;checkbox.click();await until(()=>doc.querySelector('[data-task]').checked&&!doc.querySelector('[data-task]').disabled,'task saved');
+ doc.querySelector('#navigation [data-view=items]').click();doc.querySelector('#item-add').click();await submit(doc,'item',{title:'架空の計画',description:'項目説明'});doc.querySelector('[data-plan-item]').click();await submit(doc,'task',{minutes:'20'});
+ doc.querySelector('#navigation [data-view=today]').click();const checkbox=doc.querySelector('[data-task]'),id=checkbox.dataset.task;checkbox.click();await until(()=>doc.querySelector('[data-task]').checked&&!doc.querySelector('[data-task]').disabled,'task saved');
  doc.querySelector('[data-edit-task]').click();await submit(doc,'task',{minutes:'30'});assert(doc.querySelector('[data-task]').checked,'edit preserves progress');
- const viewDate=doc.querySelector('#view-date'),originalDate=viewDate.value;viewDate.value='2030-01-15';viewDate.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));assert(doc.querySelector('#card-today').textContent.includes('予定はありません'),'arbitrary date view');viewDate.value=originalDate;viewDate.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));
+ doc.querySelector('#navigation [data-view=plans]').click();const viewDate=doc.querySelector('#view-date'),originalDate=viewDate.value;viewDate.value='2030-01-15';viewDate.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));assert(doc.querySelector('#plans-list').textContent.includes('予定はありません'),'arbitrary date view');viewDate.value=originalDate;viewDate.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));doc.querySelector('#navigation [data-view=today]').click();
  doc.querySelector('#add-record').click();await submit(doc,'record',{subject:'<img src=x onerror=alert(1)>',minutes:'17',note:'架空テスト'});
  assert(doc.querySelector('.recent-list').textContent.includes('<img src=x'),'record text');assert(!doc.querySelector('.recent-list img'),'escaped HTML');
  doc.querySelector('[data-edit-record]').click();await submit(doc,'record',{subject:'更新した記録',minutes:'23'});
- doc.querySelector('[name=theme][value=dark]').click();await until(()=>doc.documentElement.dataset.theme==='dark'&&!doc.querySelector('[name=theme]').disabled,'theme save');doc.querySelector('[data-card=stats]').click();await until(()=>doc.querySelector('#card-stats').hidden,'hide saved');assert(doc.querySelector('#card-stats').hidden,'hide stats');doc.querySelector('[data-restore=stats]').click();await until(()=>!doc.querySelector('#card-stats').hidden,'restore settings saved');assert(!doc.querySelector('#card-stats').hidden,'restore stats');
+ doc.querySelector('#settings-toggle').click();doc.querySelector('[name=theme][value=dark]').click();await until(()=>doc.documentElement.dataset.theme==='dark'&&!doc.querySelector('[name=theme]').disabled,'theme save');doc.querySelector('[data-card=stats]').click();await until(()=>doc.querySelector('#card-stats').hidden,'hide saved');assert(doc.querySelector('#card-stats').hidden,'hide stats');doc.querySelector('#settings-close').click();doc.querySelector('[data-restore=stats]').click();await until(()=>!doc.querySelector('#card-stats').hidden,'restore settings saved');assert(!doc.querySelector('#card-stats').hidden,'restore stats');
  frame.contentWindow.location.reload();await wait();await ready(frame);doc=frame.contentDocument;frame.contentWindow.confirm=()=>true;
  assert(doc.documentElement.dataset.theme==='dark','theme persists');assert(doc.querySelector('.recent-list').textContent.includes('更新した記録'),'record persists');assert(doc.querySelector('[data-task]').checked,'progress persists');
  // Real UI save error: throw from IDB write after the editor has opened.
@@ -52,7 +53,7 @@ try {
  assert(other.querySelector('#record-form').elements.subject.value==='タブB','draft survives refresh');
  await submit(other,'record',{});assert(!other.querySelector('#record-dialog').open,'reviewed retry succeeds');
  other.querySelector('#item-add').click();await submit(other,'item',{title:'削除する計画'});other.querySelectorAll('[data-plan-item]').item(other.querySelectorAll('[data-plan-item]').length-1).click();await submit(other,'task',{minutes:'12'});
- const taskButtons=[...other.querySelectorAll('[data-edit-task]')];taskButtons.at(-1).click();other.querySelector('#task-delete').click();await until(()=>!other.querySelector('#task-dialog').open,'task deleted');
+ const targetRow=[...other.querySelectorAll('#dashboard .plan-row')].find(row=>row.textContent.includes('削除する計画'));targetRow.querySelector('[data-edit-task]').click();other.querySelector('#task-delete').click();await until(()=>!other.querySelector('#task-dialog').open,'task deleted');
  assert(!other.querySelector('#dashboard').textContent.includes('削除する計画'),'task absent');
  other.querySelector('#add-record').click();await submit(other,'record',{subject:'削除する記録',minutes:'12'});
  const repo=createIndexedDBRepository();let snapshot=await repo.load();const deleteId=snapshot.records.find(x=>x.subject==='削除する記録').id;
@@ -62,9 +63,9 @@ try {
  const before=JSON.stringify(await repo.load());doc.querySelector('#add-record').click();await submit(doc,'record',{subject:'デモだけ',minutes:'5'});assert(JSON.stringify(await repo.load())===before,'demo isolated');
  frame.contentWindow.location.reload();await wait();await ready(frame);doc=frame.contentDocument;assert(!doc.querySelector('.recent-list').textContent.includes('デモだけ'),'demo resets');
  doc.querySelector('#switch-mode').click();await until(()=>doc.querySelector('#mode-label').textContent==='自分の学習','return real');assert(doc.querySelector('.recent-list').textContent.includes('更新した記録'),'real survives demo');
- await runModelUI(frame);await runAIUI(frame);doc=frame.contentDocument;
+ await runModelUI(frame);await runAIUI(frame);const navigationTests=await runNavigationUI(frame);doc=frame.contentDocument;
  // Durable expected snapshot read by a separate Chrome process.
  snapshot=await repo.load();localStorage.setItem('stardia.test.expected',JSON.stringify(snapshot));await repo.close();
- doc.querySelector('#settings-toggle').click();assert(doc.querySelector('#settings').hidden,'settings collapsed');
- result.textContent=`PASS: ${aiTests} AI storage tests; AI GUI flow; ${modelTests} migration tests; GUI item/schedule flow; ${storageTests} IndexedDB tests; ${backupTests} backup tests; UI CRUD, errors, reload, demo isolation, two tabs`;result.dataset.result='passed';
+ doc.querySelector('#settings-toggle').click();assert(doc.querySelector('#settings').open,'settings opens on demand');doc.querySelector('#settings-close').click();assert(!doc.querySelector('#settings').open,'settings collapsed');
+ result.textContent=`PASS: ${navigationTests} navigation/UX tests; ${aiTests} AI storage tests; AI GUI flow; ${modelTests} migration tests; GUI item/schedule flow; ${storageTests} IndexedDB tests; ${backupTests} backup tests; UI CRUD, errors, reload, demo isolation, two tabs`;result.dataset.result='passed';
 } catch(error){result.textContent='FAIL: '+error.stack;result.dataset.result='failed';}

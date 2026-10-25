@@ -21,6 +21,7 @@ if not runtime:
 print(run([runtime,str(ROOT/'tests/domain.test.mjs')],env))
 print(run([runtime,str(ROOT/'tests/model.test.mjs')],env))
 print(run([runtime,str(ROOT/'tests/ai.test.mjs')],env))
+print(run([runtime,str(ROOT/'tests/view-state.test.mjs')],env))
 class QuietHandler(SimpleHTTPRequestHandler):
     def log_message(self,*args): pass
 server=ThreadingHTTPServer(('127.0.0.1',0),partial(QuietHandler,directory=str(ROOT)))
@@ -33,12 +34,14 @@ try:
     print('PASS static HTTP serving including /dist/ subpath')
     chrome=next((p for p in [Path('C:/Program Files/Google/Chrome/Application/chrome.exe'),Path('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe')] if p.exists()),None)
     if chrome:
-        for label,width,height in [('desktop',1440,1000),('mobile',390,844)]:
+        for label,width,height in [('desktop',1440,900),('mobile',390,844)]:
             profile=LOCAL/('browser-'+label)
             common=[runtime,str(ROOT/'scripts/browser-check.mjs'),str(chrome)]
             print(run(common+[base+f'/tests/browser.html?width={width}',str(profile),str(width),str(height),str(LOCAL/('browser-'+label))],env))
             print(run(common+[base+'/tests/restart.html',str(profile),str(width),str(height),str(LOCAL/('restart-'+label))],env))
             print(run(common+[base+'/dist/#demo',str(LOCAL/('preview-'+label)),str(width),str(height),str(LOCAL/label),'preview'],env))
+        for label,width,height in [('desktop',1440,900),('mobile',390,844)]:
+            print(run(common+[base+'/dist/',str(LOCAL/('capture-'+label)),str(width),str(height),str(LOCAL/'verification'/'v0.0.6'/label/'capture'),'capture'],env))
         print(run(common+[base+'/tests/backup-browser.html?mode=export',str(LOCAL/'browser-desktop'),'1440','1000',str(LOCAL/'backup-export'),'export'],env))
         print(run(common+[base+'/tests/backup-browser.html?mode=import',str(LOCAL/'backup-recipient'),'390','844',str(LOCAL/'backup-import')],env))
     else: print('SKIP real browser checks: Chrome/Edge unavailable')

@@ -1,8 +1,10 @@
+import {captureUI} from './ui-capture.mjs';
 import {spawn} from 'node:child_process';
 import {readFile,writeFile,mkdir,rm,readdir,copyFile} from 'node:fs/promises';
 import path from 'node:path';
 const [chrome,url,profile,width,height,output,mode='test']=process.argv.slice(2);
 await mkdir(profile,{recursive:true});
+await mkdir(path.dirname(output),{recursive:true});
 await rm(path.join(profile,'DevToolsActivePort'),{force:true});
 const child=spawn(chrome,['--headless','--disable-gpu','--no-first-run','--no-default-browser-check','--disable-background-networking','--remote-debugging-port=0',`--user-data-dir=${profile}`,'about:blank'],{windowsHide:true,stdio:'ignore'});
 let socket,nextId=1;const pending=new Map(),errors=[];
@@ -24,16 +26,17 @@ try {
  await command('Page.navigate',{url});
  let done=false;
  for(let i=0;i<500;i++){
-  const {result}=await command('Runtime.evaluate',{expression:mode!=='preview'?"document.getElementById('result')?.dataset.result":"document.documentElement.dataset.ready",returnByValue:true});
+  const {result}=await command('Runtime.evaluate',{expression:!['preview','capture'].includes(mode)?"document.getElementById('result')?.dataset.result":"document.documentElement.dataset.ready",returnByValue:true});
   if(result.value==='failed')break;
-  if(result.value===(mode!=='preview'?'passed':'true')){done=true;break;}
+  if(result.value===(!['preview','capture'].includes(mode)?'passed':'true')){done=true;break;}
   if(errors.length)break;
   await pause(100);
  }
  const dom=await command('Runtime.evaluate',{expression:'document.documentElement.outerHTML',returnByValue:true});
  await writeFile(output+'.html',dom.result.value||'');
- if(!done)throw Error(JSON.stringify(errors)+'\n'+(dom.result.value||'').slice(0,2500));
+ if(!done){const debug=await command('Runtime.evaluate',{expression:`[...document.querySelectorAll('iframe')].map(f=>({view:f.contentDocument?.documentElement.dataset.view,status:f.contentDocument?.querySelector('#save-status')?.textContent,dialogs:[...f.contentDocument.querySelectorAll('dialog[open]')].map(d=>({id:d.id,error:d.querySelector('.form-error')?.textContent})),tasks:[...f.contentDocument.querySelectorAll('[data-task]')].map(e=>({id:e.dataset.task,checked:e.checked,disabled:e.disabled}))}))`,returnByValue:true});throw Error(JSON.stringify(errors)+'\n'+(dom.result.value||'').slice(0,2500)+'\n'+JSON.stringify(debug.result.value));}
  if(mode==='preview'){const shot=await command('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(output+'.png',Buffer.from(shot.data,'base64'));}
+ if(mode==='capture')await captureUI(command,output);
  if(mode==='export'){
   let file;for(let i=0;i<100;i++){file=(await readdir(downloadDir)).find(f=>f.endsWith('.json'));if(file)break;await pause(100);}if(!file)throw Error('JSON download missing');
   const actual=JSON.parse(await readFile(path.join(downloadDir,file),'utf8'));
