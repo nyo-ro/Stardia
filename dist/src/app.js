@@ -1,9 +1,10 @@
+import {mountBackup} from './ui/backup.js';
 import {parseDate,localDate,mondayOf,plusDays,dateText,minText} from './domain/date.js';
 import {tasksOn,progress,summarize} from './domain/study.js';
 import {createDemo} from './domain/demo.js';
 import {createMemoryRepository} from './storage/memory.js';
 import {createIndexedDBRepository,storageMessage} from './storage/indexeddb.js';
-import {themes,accents,cards,readPreferences,writePreferences} from './storage/preferences.js';
+import {themes,accents,cards,readPreferences} from './storage/preferences.js';
 import {esc} from './ui/html.js';
 const $=id=>document.getElementById(id);
 const today=localDate();
@@ -14,16 +15,18 @@ let busy=false,available=false,editingId=null,editingKind=null,editRevision=null
 let storage;
 try {storage=window.localStorage;} catch {storage=null;}
 const prefResult=readPreferences(storage);
-let preferences=prefResult.value;
+let preferences=prefResult.value,preferencesRevision=0,settingsReady=false;
 let data=null;
 let selectedDate=today;
 function applyTheme() {
  document.documentElement.dataset.theme=preferences.theme;
  document.documentElement.style.setProperty('--accent',accents[preferences.accent][1]);
 }
-function persistPreferences() {
- $('settings-status').textContent=writePreferences(storage,preferences)?'表示設定を保存しました。':'設定を保存できません。今回の表示にのみ反映します。';
- applyTheme();
+async function persistPreferences(next) {
+ if(busy)return;lock(true);
+ try{if(!settingsReady)throw new Error('表示設定の保存領域を読み込めません。最新データを確認してください。');const meta=await realRepository.savePreferences(next,preferencesRevision);preferences=meta.preferences;preferencesRevision=meta.preferencesRevision;$('settings-status').textContent='表示設定を保存しました。';}
+ catch(error){$('settings-status').textContent=storageMessage(error);}
+ finally{applyTheme();render();renderSettings();lock(false);}
 }
 function card(id,html) {return `<section id="card-${id}" class="card card-${id}" ${preferences.visibility[id]?'':'hidden'} aria-label="${cards[id]}">${html}</section>`;}
 function render() {
@@ -32,7 +35,7 @@ function render() {
  $('mode-description').textContent=demo?'架空の体験環境です。操作は実データに影響せず、再読み込みでリセットされます。':'学習データはこのブラウザに保存します。別端末には同期されません。ブラウザのデータ消去にご注意ください。';
  $('switch-mode').textContent=demo?'自分の学習に戻る':'デモを試す';
  $('project-edit').textContent=data?.project?'プロジェクトを編集':'プロジェクト作成';
- $('project-edit').disabled=!available||busy;
+ $('project-edit').disabled=!available||busy;$('backup-open').disabled=demo||busy||!settingsReady;
  $('task-add').disabled=!available||!data?.project||busy;
  $('today-label').textContent=dateText(today);
  if(!data?.project){
@@ -55,8 +58,8 @@ function renderSettings() {
 }
 function lock(value){
  busy=value;
- for(const selector of ['#dashboard button','#dashboard input','.workspace-tools button','#switch-mode','dialog button'])for(const el of document.querySelectorAll(selector))el.disabled=value;
- if(!value){$('project-edit').disabled=!available;$('task-add').disabled=!available||!data?.project;}
+ for(const selector of ['#dashboard button','#dashboard input','.workspace-tools button','#switch-mode','dialog button','#settings input','#backup-file','#restore-confirm'])for(const el of document.querySelectorAll(selector))el.disabled=value;
+ if(!value){$('backup-open').disabled=demo||!settingsReady;$('project-edit').disabled=!available;$('task-add').disabled=!available||!data?.project;}
 }
 function showError(error,form){
  const message=storageMessage(error);$('save-status').textContent=message;$('save-status').dataset.error='true';
@@ -64,8 +67,8 @@ function showError(error,form){
 }
 async function refresh(){
  if(busy)return;lock(true);
- try{const latest=await repository.load();data=latest;available=true;if(editingKind)editRevision=data.revision;$('save-status').textContent='最新データを読み込みました。開いている入力内容はそのままです。';$('save-status').dataset.error='false';}
- catch(error){available=false;showError(error);}
+ try{const meta=await realRepository.initializePreferences(prefResult.value);preferences=meta.preferences;preferencesRevision=meta.preferencesRevision;settingsReady=true;applyTheme();renderSettings();const latest=await repository.load();data=latest;available=true;if(editingKind)editRevision=data.revision;$('save-status').textContent='最新データを読み込みました。開いている入力内容はそのままです。';$('save-status').dataset.error='false';}
+ catch(error){if(demo){data=await demoRepository.load();available=true;}else available=false;showError(error);}
  finally{render();lock(false);}
 }
 async function save(command,form=null){
@@ -140,18 +143,21 @@ $('switch-mode').addEventListener('click',async()=>{
  history.replaceState(null,'',location.pathname+location.search+(demo?'#demo':''));
  await refresh();
 });
-$('settings').addEventListener('change',event=>{
- const input=event.target;
- if(input.dataset.card)preferences.visibility[input.dataset.card]=input.checked;
- else if(input.name==='theme')preferences.theme=input.value;
- else if(input.name==='accent')preferences.accent=input.value;
+$('settings').addEventListener('change',async event=>{
+ if(busy)return;const input=event.target,next=structuredClone(preferences);
+ if(input.dataset.card)next.visibility[input.dataset.card]=input.checked;
+ else if(input.name==='theme')next.theme=input.value;
+ else if(input.name==='accent')next.accent=input.value;
  else return;
- persistPreferences();render();
+ await persistPreferences(next);
 });
-$('hidden-cards').addEventListener('click',event=>{
- const id=event.target.closest('[data-restore]')?.dataset.restore;if(!id)return;
- preferences.visibility[id]=true;persistPreferences();render();renderSettings();document.querySelector(`[data-card="${id}"]`)?.focus();
+$('hidden-cards').addEventListener('click',async event=>{
+ if(busy)return;const id=event.target.closest('[data-restore]')?.dataset.restore;if(!id)return;
+ const next=structuredClone(preferences);next.visibility[id]=true;await persistPreferences(next);document.querySelector(`[data-card="${id}"]`)?.focus();
 });
+mountBackup({repository:realRepository,isBusy:()=>busy,isDemo:()=>demo,lock,onError:showError,onRestore:result=>{
+ data=result.data;preferences=result.meta.preferences;preferencesRevision=result.meta.preferencesRevision;settingsReady=true;available=true;applyTheme();renderSettings();render();$('save-status').dataset.error='false';$('save-status').textContent='学習環境を復元しました。';
+}});
 $('settings-toggle').addEventListener('click',()=>{
  const hidden=!$('settings').hidden;$('settings').hidden=hidden;$('settings-toggle').setAttribute('aria-expanded',String(!hidden));if(!hidden)$('settings').scrollIntoView({behavior:'smooth',block:'nearest'});
 });

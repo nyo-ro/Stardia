@@ -37,6 +37,8 @@ try:
             print(run(common+[base+f'/tests/browser.html?width={width}',str(profile),str(width),str(height),str(LOCAL/('browser-'+label))],env))
             print(run(common+[base+'/tests/restart.html',str(profile),str(width),str(height),str(LOCAL/('restart-'+label))],env))
             print(run(common+[base+'/dist/#demo',str(LOCAL/('preview-'+label)),str(width),str(height),str(LOCAL/label),'preview'],env))
+        print(run(common+[base+'/tests/backup-browser.html?mode=export',str(LOCAL/'browser-desktop'),'1440','1000',str(LOCAL/'backup-export'),'export'],env))
+        print(run(common+[base+'/tests/backup-browser.html?mode=import',str(LOCAL/'backup-recipient'),'390','844',str(LOCAL/'backup-import')],env))
     else: print('SKIP real browser checks: Chrome/Edge unavailable')
 finally:
     server.shutdown();server.server_close();thread.join()

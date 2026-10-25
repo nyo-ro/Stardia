@@ -1,35 +1,59 @@
-# v0.0.2 保存設計
+# v0.0.3 保存・バックアップ設計
 
-## 物理形式
+## IndexedDB
 
-IndexedDB名 `stardia.learning.v1`、DB version 1、object store `projects`、keyPath `projectId`。
-1プロジェクトにつき `{schemaVersion:1, projectId, revision, project, records}` を保存する。
-`project` は `{id,name,goal,tasks}`。tasksは日付・予定分数・必須フラグ・進捗を保持する。recordsはprojectId・date・subject・minutes・note・idを持つ。
+DB名 `stardia.learning.v1`、DB version **2**。
 
-UIの現在のprojectIdは `default`。Repositoryには別のIDを渡せる。複数プロジェクトの選択画面は未実装。小規模データを想定し、変更時にそのプロジェクト全体を読み書きする。大規模化時のストア分割は後続の検討対象。
+- `projects`（keyPath: projectId）: `{schemaVersion:1, projectId, revision, project, records}`。
+- `metadata`（keyPath: key）: `{key:'workspace', revision, preferencesRevision, preferences}`。
 
-## 契約
+version 1からはmetadataストアだけを追加し、既存projectsを書き換えない。UI起動時、metadataがない場合だけ旧localStorageの設定を正規化して保存する。以後localStorageに残る値は使わず、設定もIndexedDBで管理する。旧タブはversionchangeで接続を閉じ、新版を開き直す必要がある。
 
-- `load()`: 存在しない場合はrevision 0・project nullの空スナップショットを返す。DBへの初期データ書込はしない。
-- `mutate(command, expectedRevision)`: 共通domain処理で検証し、更新後スナップショットを返す。
-- `close()`: 接続を閉じる。
+projectはid・name・goal・tasksを持つ。tasksはid・title・date・minutes・required・status（unstarted/completed）、recordsはid・projectId・date・subject・minutes・noteを持つ。現行形式では記録とタスクの直接参照はない。
 
-create/update/deleteProject、add/update/deleteTask、setTaskStatus、add/update/deleteRecordをサポートする。revisionチェック・取得・全変更・putは同じreadwrite transactionに含め、oncompleteでのみ成功を返す。readwrite transactionが直列化されるため、二つのタブが同じrevisionで書こうとすると一方だけ成功する。
+UIの選択対象はdefaultプロジェクト。保存層は複数projectIdを扱い、バックアップは全projectIdを含む。複数プロジェクトを選択する画面は未実装。
 
-プロジェクト削除ではrevision付きの空データを残す。削除・再作成後に古いタブが同じrevisionとして認識することを防ぐ。タスク削除は記録を削除しない。記録とタスクの直接参照は現在の形式では持たない。
+## 更新と競合
 
-## 失敗・競合
+通常更新はprojectsとmetadataを含むreadwrite transactionで、対象プロジェクトrevisionの照合→変更→プロジェクトrevisionとworkspace revisionの加算を行う。設定更新はpreferencesRevisionを照合し、preferencesRevisionとworkspace revisionを加算する。成功はtransaction.oncompleteだけで通知する。
 
-失敗時はtransactionをabortし、保存済みデータを維持。容量不足・書込禁止などのエラーはUIまで返す。IndexedDBが使えなくても実データをメモリ保存へ切り替えない。初期作成が中断された場合は再試行可能。未知のschemaVersion、将来のDB versionは読み込みを拒否し、自動リセットしない。onversionchangeで接続を閉じ、古い画面による更新を止める。
+保存失敗時はabortし、データと設定の両方を維持する。フォーム入力は保持。競合は保存時に検知し、自動マージ・自動再送しない。IndexedDBが使えなくても実データをメモリ保存へ切り替えない。
 
-競合時は入力を保持。明示的な最新読込でフォームの基準revisionを更新し、最新の対象項目を表示する。利用者が比較・修正して再保存する。競合通知は保存を試みた時点で行い、他タブの更新を自動で画面へ反映しない。
+## バックアップ形式 v1
 
-## デモ
+```json
+{
+  "type": "stardia_backup",
+  "schemaVersion": 1,
+  "createdAt": "2026-10-25T00:00:00.000Z",
+  "projects": [],
+  "uiPreferences": {
+    "version": 1,
+    "theme": "light",
+    "accent": "purple",
+    "visibility": {"today": true, "week": true, "stats": true, "recent": true}
+  }
+}
+```
 
-架空データはcreateDemoから新規生成し、MemoryRepositoryだけに渡す。IndexedDBには一切seedしない。UI設定のみ共通。旧v0.0.1の学習内容は元々メモリ内のため移行できない。表示設定キーは維持する。
+projectsの各要素は `{projectId, project, records}`。計画・進捗はproject.tasksに含む。保存層のrevisionと削除済みプロジェクトのtombstoneは輸送用JSONに含めない。createdAt以外の学習内容と表示設定が往復で一致することを検証する。
 
-## 次版のバックアップ案（実装前）
+exportBackupはprojectsとmetadataを同じreadonly transactionで取得し、完了後にJSON用の独立したオブジェクトを返す。以後の更新は生成済みスナップショットへ影響しない。UIの未保存入力は対象外。
 
-外側に `type: stardia_backup`, `schemaVersion`, `exportedAt`, `projects`, `uiPreferences` を持つ。全計画・記録・進捗・将来の互換項目を含め、復元時は検証→確認→原子的置換とする。ローカルrevisionはバックアップの数値をそのまま採用せず、復元時の競合保護用に更新する。仕様確定と往復テストはv0.0.3で実施。
+## 復元
 
-完全バックアップ、永続化許可の要求、DBの自動修復、旧Study JSONインポート、クラウド同期は未実装。IndexedDBの永続性はブラウザの保存領域が保持される範囲であり、手動消去やディスク障害に対するバックアップではない。
+1. 10MB上限を確認し、JSON構文・type・バージョン・UTC作成日時・必須項目・型・文字数・日付・時間・進捗・設定を検証。
+2. プロジェクトID、タスクID、記録IDの重複（各種類内）と、project.id / records.projectIdの参照関係を検証。IDには英数字・ハイフン・アンダースコアを使用。
+3. 未知の項目も黙って削除せず拒否する。将来形式は新バージョンと専用の移行処理で扱う。
+4. 読込後に現在のworkspace revisionと概要を取得。利用者が一式置換を確認。
+5. restoreBackupで再検証し、単一readwrite transaction内でworkspace revisionを照合して全プロジェクトと表示設定を置換。
+6. 復元後のrevisionは現在値から増加させ、バックアップ内の値は採用しない。削除された既存projectIdには空のtombstoneを残し、defaultにも必ずrevisionを付ける。古いタブによる更新を拒否する。
+7. metadataのrevision・preferencesRevisionも更新。途中のどのputが失敗してもtransaction全体を取り消す。
+
+DB削除・store.clearによる初期化は使わない。復元完了後は返されたデータ・設定で画面を更新する。失敗や競合時は確認を無効にし、ファイルの選び直しを求める。二重クリックと読込中の操作をロックする。概要にはtextContentを使い、JSONをHTMLとして解釈しない。
+
+## デモと制約
+
+デモはMemoryRepository専用。バックアップの読み書きは常に実IndexedDBを対象とし、デモ画面では操作ボタンを無効化する。表示設定は両モードで共通。
+
+最大10MB、最大1000プロジェクト。全体をメモリ上で処理するため巨大データ向けのストリーミング処理はない。完全バックアップはStardia形式のみで、旧Study JSONの直接取り込みは未実装。ブラウザ保存は手動消去やディスク故障に耐えるバックアップではなく、別途JSONを保管する必要がある。暗号化、クラウド同期、自動バックアップ、未知形式の自動修復は未実装。

@@ -1,3 +1,4 @@
+import {runBackupTests} from './backup.test.js';
 import {STORAGE_KEY} from '../dist/src/storage/preferences.js';
 import {createIndexedDBRepository,DB_NAME} from '../dist/src/storage/indexeddb.js';
 import {runStorageTests} from './idb.test.js';
@@ -9,7 +10,7 @@ async function ready(frame){await until(()=>frame.contentDocument?.documentEleme
 async function submit(doc,kind,values){const form=doc.getElementById(kind+'-form');for(const [key,value]of Object.entries(values)){if(typeof value==='boolean')form.elements[key].checked=value;else form.elements[key].value=value;}form.requestSubmit();await until(()=>!doc.getElementById(kind+'-dialog').open||form.querySelector('.form-error').textContent,'form did not finish');}
 async function mount(hash=''){const f=document.createElement('iframe');f.style.width=new URLSearchParams(location.search).get('width')+'px';f.src='../dist/'+hash;document.body.append(f);await ready(f);f.contentWindow.confirm=()=>true;return f;}
 try {
- const storageTests=await runStorageTests();
+ const storageTests=await runStorageTests();const backupTests=await runBackupTests();
  localStorage.removeItem(STORAGE_KEY);
  await new Promise((resolve,reject)=>{const q=indexedDB.deleteDatabase(DB_NAME);q.onsuccess=resolve;q.onerror=()=>reject(q.error);q.onblocked=()=>reject(Error('unexpected open test database'));});
  const frame=await mount();let doc=frame.contentDocument;
@@ -30,7 +31,7 @@ try {
  doc.querySelector('#add-record').click();await submit(doc,'record',{subject:'<img src=x onerror=alert(1)>',minutes:'17',note:'架空テスト'});
  assert(doc.querySelector('.recent-list').textContent.includes('<img src=x'),'record text');assert(!doc.querySelector('.recent-list img'),'escaped HTML');
  doc.querySelector('[data-edit-record]').click();await submit(doc,'record',{subject:'更新した記録',minutes:'23'});
- doc.querySelector('[name=theme][value=dark]').click();doc.querySelector('[data-card=stats]').click();assert(doc.querySelector('#card-stats').hidden,'hide stats');doc.querySelector('[data-restore=stats]').click();assert(!doc.querySelector('#card-stats').hidden,'restore stats');
+ doc.querySelector('[name=theme][value=dark]').click();await until(()=>doc.documentElement.dataset.theme==='dark'&&!doc.querySelector('[name=theme]').disabled,'theme save');doc.querySelector('[data-card=stats]').click();await until(()=>doc.querySelector('#card-stats').hidden,'hide saved');assert(doc.querySelector('#card-stats').hidden,'hide stats');doc.querySelector('[data-restore=stats]').click();await until(()=>!doc.querySelector('#card-stats').hidden,'restore settings saved');assert(!doc.querySelector('#card-stats').hidden,'restore stats');
  frame.contentWindow.location.reload();await wait();await ready(frame);doc=frame.contentDocument;frame.contentWindow.confirm=()=>true;
  assert(doc.documentElement.dataset.theme==='dark','theme persists');assert(doc.querySelector('.recent-list').textContent.includes('更新した記録'),'record persists');assert(doc.querySelector('[data-task]').checked,'progress persists');
  // Real UI save error: throw from IDB write after the editor has opened.
@@ -60,5 +61,5 @@ try {
  // Durable expected snapshot read by a separate Chrome process.
  snapshot=await repo.load();localStorage.setItem('stardia.test.expected',JSON.stringify(snapshot));await repo.close();
  doc.querySelector('#settings-toggle').click();assert(doc.querySelector('#settings').hidden,'settings collapsed');
- result.textContent=`PASS: ${storageTests} IndexedDB tests; UI CRUD, errors, reload, demo isolation, two tabs`;result.dataset.result='passed';
+ result.textContent=`PASS: ${storageTests} IndexedDB tests; ${backupTests} backup tests; UI CRUD, errors, reload, demo isolation, two tabs`;result.dataset.result='passed';
 } catch(error){result.textContent='FAIL: '+error.stack;result.dataset.result='failed';}

@@ -13,3 +13,5 @@
 .latest-data{white-space:pre-wrap;overflow-wrap:anywhere;max-height:160px;overflow:auto;background:var(--soft);padding:10px;font-size:11px}
 
 .workspace-tools input{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px;max-width:160px}.workspace-tools label{font-size:12px}
+
+#backup-dialog>p,#backup-dialog>label,#backup-dialog>button{margin-top:16px}#backup-file{display:block;max-width:100%;margin-top:8px}#backup-status{font-size:12px;overflow-wrap:anywhere}#restore-summary{max-height:230px}

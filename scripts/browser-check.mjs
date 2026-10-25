@@ -1,5 +1,5 @@
 import {spawn} from 'node:child_process';
-import {readFile,writeFile,mkdir,rm} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,rm,readdir,copyFile} from 'node:fs/promises';
 import path from 'node:path';
 const [chrome,url,profile,width,height,output,mode='test']=process.argv.slice(2);
 await mkdir(profile,{recursive:true});
@@ -17,14 +17,16 @@ try {
  socket=new WebSocket(targets.find(t=>t.type==='page').webSocketDebuggerUrl);
  await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true});});
  socket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(message.id){const callback=pending.get(message.id);pending.delete(message.id);if(message.error)callback.reject(Error(JSON.stringify(message.error)));else callback.resolve(message.result);}if(message.method==='Runtime.exceptionThrown')errors.push(message.params.exceptionDetails);});
+ const downloadDir=output+'-downloads-'+Date.now();
+ if(mode==='export'){await mkdir(downloadDir,{recursive:true});await command('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:path.resolve(downloadDir)});}
  await command('Page.enable');await command('Runtime.enable');
  await command('Emulation.setDeviceMetricsOverride',{width:Number(width),height:Number(height),deviceScaleFactor:1,mobile:false});
  await command('Page.navigate',{url});
  let done=false;
  for(let i=0;i<500;i++){
-  const {result}=await command('Runtime.evaluate',{expression:mode==='test'?"document.getElementById('result')?.dataset.result":"document.documentElement.dataset.ready",returnByValue:true});
+  const {result}=await command('Runtime.evaluate',{expression:mode!=='preview'?"document.getElementById('result')?.dataset.result":"document.documentElement.dataset.ready",returnByValue:true});
   if(result.value==='failed')break;
-  if(result.value===(mode==='test'?'passed':'true')){done=true;break;}
+  if(result.value===(mode!=='preview'?'passed':'true')){done=true;break;}
   if(errors.length)break;
   await pause(100);
  }
@@ -32,6 +34,14 @@ try {
  await writeFile(output+'.html',dom.result.value||'');
  if(!done)throw Error(JSON.stringify(errors)+'\n'+(dom.result.value||'').slice(0,2500));
  if(mode==='preview'){const shot=await command('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(output+'.png',Buffer.from(shot.data,'base64'));}
+ if(mode==='export'){
+  let file;for(let i=0;i<100;i++){file=(await readdir(downloadDir)).find(f=>f.endsWith('.json'));if(file)break;await pause(100);}if(!file)throw Error('JSON download missing');
+  const actual=JSON.parse(await readFile(path.join(downloadDir,file),'utf8'));
+  const expected=await command('Runtime.evaluate',{expression:'window.exportExpected',returnByValue:true});
+  const semantic=x=>JSON.stringify({projects:x.projects,uiPreferences:x.uiPreferences});
+  if(semantic(actual)!==semantic(expected.result.value))throw Error('Downloaded backup differs');
+  await copyFile(path.join(downloadDir,file),path.join(path.dirname(output),'transfer.json'));
+ }
  console.log('PASS '+url);
 }finally{
  if(socket?.readyState===1){await command('Browser.close').catch(()=>{});socket.close();}
