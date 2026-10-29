@@ -1,1 +1,1 @@
-{"name":"stardia","version":"0.0.7","private":true,"type":"module","scripts":{"test":"node tests/domain.test.mjs && node tests/model.test.mjs && node tests/ai.test.mjs && node tests/view-state.test.mjs"}}
+{"name":"stardia","version":"0.0.7+flow.1","private":true,"type":"module","scripts":{"test":"node tests/domain.test.mjs && node tests/model.test.mjs && node tests/ai.test.mjs && node tests/view-state.test.mjs"}}

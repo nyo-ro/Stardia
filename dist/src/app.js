@@ -13,6 +13,7 @@ const today=localDate();
 const realRepository=createIndexedDBRepository();
 const demoRepository=createMemoryRepository(createDemo(today));
 let demo=location.hash==='#demo',repository=demo?demoRepository:realRepository;
+let planningFlow=false;
 let busy=false,available=false,editingId=null,editingKind=null,editRevision=null;
 let storage;
 try {storage=window.localStorage;} catch {storage=null;}
@@ -30,7 +31,7 @@ function dirty(){return !!editingKind&&formValue($(`${editingKind}-form`))!==ini
 function permitLeave(){if(busy)return false;if(dirty()&&!confirm('未保存の入力を破棄して移動しますか？'))return false;if(editingKind)$(`${editingKind}-dialog`).close();if($('settings').open)settingsOpen(false);return true;}
 function routeURL(view){const url=new URL(location.href);url.searchParams.set('view',view);return url.pathname+url.search+url.hash;}
 history.replaceState({stardiaIndex:historyIndex},'',routeURL(currentView));
-function showView(focus=false){document.documentElement.dataset.view=currentView;for(const section of document.querySelectorAll('[data-page]'))section.hidden=section.dataset.page!==currentView;for(const nav of document.querySelectorAll('#navigation [data-view]')){if(nav.dataset.view===currentView)nav.setAttribute('aria-current','page');else nav.removeAttribute('aria-current');}$('page-heading').textContent=currentView==='today'?'今日の学習':views[currentView];$('page-eyebrow').textContent={today:'TODAY',plans:'STUDY PLAN',items:'STUDY ITEMS',records:'STUDY RECORDS',analysis:'LEARNING INSIGHTS',ai:'AI WORKSPACE',data:'YOUR DATA'}[currentView];$('today-label').textContent=currentView==='today'?`${today} ・ ${dateText(today)}`:'';$('item-add').hidden=!['today','items'].includes(currentView);$('task-add').hidden=!['today','plans','items'].includes(currentView);$('add-record').hidden=!['today','records'].includes(currentView);if(focus){$('page-heading').focus();window.scrollTo(0,0);}}
+function showView(focus=false){$('project-edit').hidden=!data?.project&&['today','plans'].includes(currentView);document.documentElement.dataset.view=currentView;for(const section of document.querySelectorAll('[data-page]'))section.hidden=section.dataset.page!==currentView;for(const nav of document.querySelectorAll('#navigation [data-view]')){if(nav.dataset.view===currentView)nav.setAttribute('aria-current','page');else nav.removeAttribute('aria-current');}$('page-heading').textContent=currentView==='today'?'今日の学習':views[currentView];$('page-eyebrow').textContent={today:'TODAY',plans:'STUDY PLAN',items:'STUDY ITEMS',records:'STUDY RECORDS',analysis:'LEARNING INSIGHTS',ai:'AI WORKSPACE',data:'YOUR DATA'}[currentView];$('today-label').textContent=currentView==='today'?`${today} ・ ${dateText(today)}`:'';$('item-add').hidden=currentView!=='items'||!data?.project;$('plan-link').hidden=currentView!=='today'||!data?.project||!data.project.schedules.some(s=>!s.archived);$('add-record').hidden=!['today','records'].includes(currentView)||!data?.project;$('add-record').textContent=currentView==='today'?'予定外の学習を記録':'記録を追加';if(focus){$('page-heading').focus();window.scrollTo(0,0);}}
 function navigate(view){if(!Object.hasOwn(views,view)||view===currentView||!permitLeave())return;currentView=view;historyIndex++;history.pushState({stardiaIndex:historyIndex},'',routeURL(view));showView(true);}
 window.addEventListener('popstate',async()=>{
  const nextIndex=history.state?.stardiaIndex,newDemo=location.hash==='#demo';if(reverting){reverting=false;return;}
@@ -64,11 +65,11 @@ async function persistPreferences(next) {
 }
 function render(){
  $('mode-label').textContent=demo?'架空デモ':'自分の学習';$('mode-description').textContent=demo?'架空の体験環境。操作は実データに影響せず、再読み込みでリセット。':'ブラウザ内保存・端末間同期なし';$('switch-mode').textContent=demo?'自分の学習に戻る':'デモを試す';
- $('project-edit').textContent=data?.project?data.project.name+' ▾':'プロジェクト作成';$('project-edit').setAttribute('aria-label',data?.project?data.project.name+'のプロジェクト設定':'プロジェクト作成');
+ $('project-edit').textContent=data?.project?data.project.name+' ▾':'学習テーマを決める';$('project-edit').setAttribute('aria-label',data?.project?data.project.name+'のプロジェクト設定':'学習テーマを決める');
  renderViews(data,preferences,viewState,today,available);showView();controls();
 }
 function controls(){
- $('project-edit').disabled=busy||!available;$('item-add').disabled=busy||!available||!data?.project;$('task-add').disabled=busy||!available||!data?.project?.items.some(i=>!i.archived);$('add-record').disabled=busy||!available||!data?.project;
+ $('project-edit').disabled=busy||!available;$('plan-new').disabled=busy||!available||!data?.project;$('item-add').disabled=busy||!available||!data?.project;$('task-add').disabled=busy||!available||!data?.project?.items.some(i=>!i.archived);$('add-record').disabled=busy||!available||!data?.project;
  $('backup-open').disabled=busy||demo||!settingsReady;$('ai-open').disabled=busy||demo||!available||!data?.project;
  for(const el of document.querySelectorAll('#ai-dialog button,#ai-dialog input,#ai-dialog select,#ai-dialog textarea'))el.disabled=busy||demo||!available||!data?.project;
  for(const el of document.querySelectorAll('#backup-dialog button,#backup-dialog input'))el.disabled=busy||demo||!settingsReady;
@@ -96,7 +97,7 @@ async function save(command,form=null){
  try{
   data=await repository.mutate(command,form?editRevision:data.revision);
 
-  if(['addSchedule','updateSchedule','addTask','updateTask'].includes(command.type)){selectedDate=command.input.date;viewState.plans.from=selectedDate;viewState.plans.mode='day';viewState.plans.query='';viewState.plans.page=0;syncFilters();remember();}
+  if(['addSchedule','updateSchedule','addTask','updateTask'].includes(command.type)){selectedDate=command.input.date;viewState.plans.from=selectedDate;viewState.plans.mode='day';viewState.plans.state='active';viewState.plans.query='';viewState.plans.page=0;syncFilters();remember();}
   $('save-status').textContent=demo?'デモだけを更新しました。実データは変更していません。':'ブラウザに保存しました。';
   render();return true;
  }catch(error){showError(error,form);render();return false;}
@@ -108,16 +109,18 @@ function recordSchedules(selected=null){
  form.elements.scheduleId.innerHTML='<option value="">予定に関連付けない</option>'+data.project.schedules.filter(s=>s.itemId===itemId&&(!s.archived||s.id===selected)).map(s=>`<option value="${esc(s.id)}" ${s.id===selected?'selected':''}>${esc(s.date)} ・ ${s.minutes}分${s.archived?'（削除済み）':''}</option>`).join('');
  form.elements.completeSchedule.checked=false;form.elements.completeSchedule.disabled=!form.elements.scheduleId.value||data.project.schedules.find(s=>s.id===form.elements.scheduleId.value)?.archived===true;
 }
+function afterClose(dialog,action){dialog.addEventListener('close',()=>requestAnimationFrame(action),{once:true});}
 function openEditor(kind,id=null,context={}){
  if(busy||!available)return;
  returnFocus=lastTrigger?.id?'#'+CSS.escape(lastTrigger.id):lastTrigger?Array.from(lastTrigger.attributes).filter(a=>a.name.startsWith('data-')&&a.name!=='data-close').map(a=>`[${a.name}=${JSON.stringify(a.value)}]`).join(''):null;
+ planningFlow=kind==='item'&&context.forPlan===true;
  editingKind=kind;editingId=kind==='project'?(data.project?.id||null):id;editRevision=data.revision;
  const form=$(`${kind}-form`);form.reset();form.querySelector('.form-error').textContent='';form.querySelector('.latest-data')?.remove();
  form.querySelector('.mode-help').textContent=demo?'デモの操作です。実データは変更しません。':'変更はこのブラウザに保存します。';
  const item=kind==='project'?data.project:kind==='task'?data.project.schedules.find(t=>t.id===id):kind==='item'?data.project.items.find(i=>i.id===id):data.records.find(r=>r.id===id);
- if(kind==='project'){for(const key of ['name','description','goal','startDate','targetDate'])form.elements[key].value=item?.[key]||'';}
- else if(kind==='item'){form.elements.title.value=item?.title||'';form.elements.description.value=item?.description||'';}
- else if(kind==='task'){form.elements.itemId.innerHTML=optionsForItems(item?.itemId||context.itemId);form.elements.date.value=item?.date||(currentView==='plans'?selectedDate:today);form.elements.minutes.value=item?.minutes||25;form.elements.required.checked=item?.required!==false;}
+ if(kind==='project'){$('project-details').open=!!item;for(const key of ['name','description','goal','startDate','targetDate'])form.elements[key].value=item?.[key]||'';}
+ else if(kind==='item'){$('item-title').textContent=planningFlow?'1. 学習する内容を決める':'学習内容';form.querySelector('[type=submit]').textContent=planningFlow?'内容を保存して日付へ':'保存する';if(planningFlow)form.querySelector('.mode-help').textContent='内容を保存してから、日付を設定します。日付設定をやめても内容は残り、後から再利用できます。';form.elements.title.value=item?.title||'';form.elements.description.value=item?.description||'';}
+ else if(kind==='task'){$('task-title').textContent=context.savedItem?'2. 学習する日を決める':'学習する日を決める';$('task-entry-help').textContent=context.savedItem?'学習内容は保存済みです。今は閉じても「登録済みの内容を使う」から再開できます。':'登録した内容を選び、日付と予定時間を設定してください。';form.elements.itemId.innerHTML=optionsForItems(item?.itemId||context.itemId);form.elements.date.value=item?.date||(currentView==='plans'?selectedDate:today);form.elements.minutes.value=item?.minutes||25;form.elements.required.checked=item?.required!==false;}
  else {
   const plan=context.scheduleId?data.project.schedules.find(s=>s.id===context.scheduleId):null;
   form.elements.date.value=item?.date||plan?.date||(currentView==='plans'?selectedDate:today);form.elements.subject.value=item?.subject||data.project.items.find(i=>i.id===plan?.itemId)?.title||'';form.elements.minutes.value=item?.minutes||plan?.minutes||25;form.elements.note.value=item?.note||'';
@@ -141,7 +144,7 @@ $('main').addEventListener('click',event=>{
  const linked=event.target.closest('[data-record-schedule]');if(linked)openEditor('record',null,{scheduleId:linked.dataset.recordSchedule});
  const record=event.target.closest('[data-edit-record]');if(record)openEditor('record',record.dataset.editRecord);
  const item=event.target.closest('[data-edit-item]');if(item)openEditor('item',item.dataset.editItem);
- const plan=event.target.closest('[data-plan-item]');if(plan)openEditor('task',null,{itemId:plan.dataset.planItem});
+ const plan=event.target.closest('[data-plan-item]');if(plan){navigate('plans');lastTrigger=$('task-add');openEditor('task',null,{itemId:plan.dataset.planItem});}
 });
 $('main').addEventListener('click',async event=>{
  const trigger=event.target.closest('[data-unarchive-item],[data-unarchive-plan]');if(!trigger||busy)return;
@@ -152,13 +155,14 @@ $('main').addEventListener('click',async event=>{
  (visibleTarget(selector)||$('page-heading')).focus();
 });
 $('project-edit').addEventListener('click',()=>openEditor('project'));
+$('plan-new').addEventListener('click',()=>openEditor('item',null,{forPlan:true}));
 $('task-add').addEventListener('click',()=>openEditor('task'));
 $('item-add').addEventListener('click',()=>openEditor('item'));
 $('add-record').addEventListener('click',()=>openEditor('record'));
 for(const kind of ['record','task','item','project']){
  const dialog=$(`${kind}-dialog`),form=$(`${kind}-form`);
  dialog.addEventListener('cancel',event=>{if(busy||(dirty()&&!confirm('未保存の入力を破棄して閉じますか？')))event.preventDefault();});
- dialog.addEventListener('close',()=>{if(!dialog.open){editingKind=null;editingId=null;editRevision=null;initialForm='';const target=returnFocus?visibleTarget(returnFocus):null;requestAnimationFrame(()=>{(target&&!target.closest('[hidden]')?target:$('page-heading')).focus();});}});
+ dialog.addEventListener('close',()=>{if(!dialog.open){editingKind=null;editingId=null;editRevision=null;initialForm='';planningFlow=false;const target=returnFocus?visibleTarget(returnFocus):null;requestAnimationFrame(()=>{(target&&!target.closest('[hidden]')?target:$('page-heading')).focus();});}});
  form.querySelector('[data-refresh]').addEventListener('click',async()=>{
   if(busy||!confirm('入力を残して最新データを読み込みます。現在の保存内容を確認してから保存してください。'))return;
   await refresh();if(!available)return;
@@ -176,7 +180,12 @@ for(const kind of ['record','task','item','project']){
   if(kind==='record')input.completeSchedule=form.elements.completeSchedule.checked;
   if(kind==='task')input.required=form.elements.required.checked;
   const type=kind==='project'?(editingId?'updateProject':'createProject'):(editingId?'update':'add')+(kind==='record'?'Record':kind==='item'?'Item':'Schedule');
-  if(await save({type,id:editingId,input},form)){dialog.close();}
+  const nextPlan=kind==='item'&&planningFlow&&!editingId,newProject=type==='createProject';
+  if(await save({type,id:editingId,input},form)){
+   if(nextPlan){const itemId=data.project.items.at(-1).id;afterClose(dialog,()=>{lastTrigger=$('task-add');openEditor('task',null,{itemId,savedItem:true});});}
+   else if(newProject)afterClose(dialog,()=>navigate('plans'));
+   dialog.close();
+  }
  });
  $(`${kind}-delete`).addEventListener('click',async()=>{
   if(busy)return;

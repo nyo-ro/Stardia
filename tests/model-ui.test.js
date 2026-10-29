@@ -9,7 +9,7 @@ export async function runModelUI(frame){
  doc.querySelector('#project-edit').click();await submit('project',{description:'自分の学習環境',startDate:'2031-01-01',targetDate:'2031-02-01'});
  doc.querySelector('#navigation [data-view=items]').click();doc.querySelector('#item-add').click();await submit('item',{title:'自由な学び',description:'好きな方法で学習'});
  let snapshot=await repo.load();const itemId=snapshot.project.items.find(i=>i.title==='自由な学び').id;
- for(const[date,minutes]of[['2031-01-10','30'],['2031-01-12','45']]){doc.querySelector(`[data-plan-item="${itemId}"]`).click();await submit('task',{date,minutes});}
+ for(const[date,minutes]of[['2031-01-10','30'],['2031-01-12','45']]){doc.querySelector('#navigation [data-view=items]').click();doc.querySelector(`[data-plan-item="${itemId}"]`).click();await submit('task',{date,minutes});}
  snapshot=await repo.load();const plans=snapshot.project.schedules.filter(s=>s.itemId===itemId);assert(plans.length===2,'same item multiple dates');assert(plans.every(s=>!('title'in s)),'title duplicated');
  const scheduleId=plans[1].id;doc.querySelector('#navigation [data-view=plans]').click();
  doc.querySelector(`[data-record-schedule="${scheduleId}"]`).click();await submit('record',{minutes:'27',note:'当日の実績',completeSchedule:true});
