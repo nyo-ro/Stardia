@@ -23,6 +23,7 @@ let session;try{session=window.sessionStorage;}catch{session=null;}
 const viewState=readViewState(session,today);
 let currentView=Object.hasOwn(views,new URLSearchParams(location.search).get('view'))?new URLSearchParams(location.search).get('view'):'today';
 let selectedDate=viewState.plans.from,historyIndex=Number.isSafeInteger(history.state?.stardiaIndex)?history.state.stardiaIndex:0,reverting=false,lastTrigger=null,returnFocus=null,initialForm='',aiController,backupController;
+function visibleTarget(selector){return [...document.querySelectorAll(selector)].find(el=>el.getClientRects().length&&!el.disabled);}
 function remember(){try{session?.setItem(VIEW_KEY,JSON.stringify(viewState));}catch{}}
 function formValue(form){return JSON.stringify([...form.elements].filter(e=>e.name).map(e=>[e.name,e.type==='checkbox'?e.checked:e.value]));}
 function dirty(){return !!editingKind&&formValue($(`${editingKind}-form`))!==initialForm;}
@@ -47,8 +48,9 @@ function filterAvailability(){if(busy)return;$('view-date').disabled=viewState.p
 for(const form of document.querySelectorAll('.filters'))form.addEventListener('submit',e=>e.preventDefault());
 $('main').addEventListener('input',event=>{if(event.target.type==='search')updateFilter(event.target);});
 $('main').addEventListener('change',event=>{if(event.target.dataset.filter)updateFilter(event.target);});
-function updateFilter(control){if(busy)return;const[group,key]=control.dataset.filter.split('.');viewState[group][key]=control.value;viewState[group].page=0;selectedDate=viewState.plans.from;render();remember();}
-$('main').addEventListener('click',event=>{const reset=event.target.closest('[data-reset]'),step=event.target.closest('[data-page-step]');if(busy)return;if(reset){viewState[reset.dataset.reset]=defaultViewState(today)[reset.dataset.reset];syncFilters();render();remember();}if(step){const group=step.dataset.pageStep;viewState[group].page+=Number(step.dataset.step);render();remember();const replacement=document.querySelector(`[data-page-step="${group}"][data-step="${step.dataset.step}"]`);(replacement?.disabled?$('page-heading'):replacement)?.focus();}});
+function updateFilter(control){if(busy)return;const[group,key]=control.dataset.filter.split('.');viewState[group][key]=control.value;viewState[group].page=0;selectedDate=viewState.plans.from;render();remember();announceResults();}
+function announceResults(){const list=$(currentView==='analysis'?'analysis-results':currentView+'-list');$('list-status').textContent=views[currentView]+'：'+(list?.querySelector('.pagination>span')?.textContent||list?.querySelector('[role=alert]')?.textContent||'条件を更新しました。');}
+$('main').addEventListener('click',event=>{const reset=event.target.closest('[data-reset]'),step=event.target.closest('[data-page-step]');if(busy)return;if(reset){viewState[reset.dataset.reset]=defaultViewState(today)[reset.dataset.reset];syncFilters();render();remember();}if(step){const group=step.dataset.pageStep;viewState[group].page+=Number(step.dataset.step);render();remember();announceResults();const replacement=document.querySelector(`[data-page-step="${group}"][data-step="${step.dataset.step}"]`);(replacement?.disabled?$('page-heading'):replacement)?.focus();}});
 
 function applyTheme() {
  document.documentElement.dataset.theme=preferences.theme;
@@ -74,17 +76,17 @@ function controls(){
  aiController?.sync();backupController?.sync();filterAvailability();
 }
 function renderSettings() {
- $('settings-content').innerHTML=`<fieldset><legend>表示するカード</legend>${Object.entries(cards).map(([id,label])=>`<label class="toggle-label"><span>${label}</span><input type="checkbox" role="switch" data-card="${id}" ${preferences.visibility[id]?'checked':''}></label>`).join('')}</fieldset><fieldset><legend>テーマ</legend><div class="theme-options">${Object.entries(themes).map(([id,label])=>`<label><input type="radio" name="theme" value="${id}" ${preferences.theme===id?'checked':''}><span class="theme-swatch theme-${id}"></span>${label}</label>`).join('')}</div></fieldset><fieldset><legend>アクセントカラー</legend><div class="accent-options">${Object.entries(accents).map(([id,[label,color]])=>`<label title="${label}"><input type="radio" name="accent" value="${id}" aria-label="${label}" ${preferences.accent===id?'checked':''}><span style="--swatch:${color}"></span></label>`).join('')}</div></fieldset><div class="settings-tip"><span>✦</span><p>自分らしいペースで。<br>表示する情報を選んで、<br>今日の学びに集中しよう。</p></div>`;
+ $('settings-content').innerHTML=`<fieldset><legend>表示するカード</legend>${Object.entries(cards).map(([id,label])=>`<label class="toggle-label"><span>${id==='stats'?'今週の学習時間':label}</span><input type="checkbox" role="switch" data-card="${id}" ${preferences.visibility[id]?'checked':''}></label>`).join('')}</fieldset><fieldset><legend>テーマ</legend><div class="theme-options">${Object.entries(themes).map(([id,label])=>`<label><input type="radio" name="theme" value="${id}" ${preferences.theme===id?'checked':''}><span class="theme-swatch theme-${id}"></span>${label}</label>`).join('')}</div></fieldset><fieldset><legend>アクセントカラー</legend><div class="accent-options">${Object.entries(accents).map(([id,[label,color]])=>`<label title="${label}"><input type="radio" name="accent" value="${id}" aria-label="${label}" ${preferences.accent===id?'checked':''}><span style="--swatch:${color}"></span></label>`).join('')}</div></fieldset><div class="settings-tip"><span>✦</span><p>自分らしいペースで。<br>表示する情報を選んで、<br>今日の学びに集中しよう。</p></div>`;
 }
 const disabledBefore=new WeakMap();
-function lock(value){busy=value;for(const el of document.querySelectorAll('button,input,select,textarea')){if(value){disabledBefore.set(el,el.disabled);el.disabled=true;}else if(disabledBefore.has(el)){el.disabled=disabledBefore.get(el);disabledBefore.delete(el);}}if(!value)controls();}
+function lock(value){busy=value;$('main').setAttribute('aria-busy',String(value));for(const el of document.querySelectorAll('button,input,select,textarea')){if(value){disabledBefore.set(el,el.disabled);el.disabled=true;}else if(disabledBefore.has(el)){el.disabled=disabledBefore.get(el);disabledBefore.delete(el);}}if(!value)controls();}
 function showError(error,form){
  const message=storageMessage(error);$('save-status').textContent=message;$('save-status').dataset.error='true';
- if(form)form.querySelector('.form-error').textContent=message;
+ if(form){const errorNode=form.querySelector('.form-error');errorNode.textContent=message;errorNode.tabIndex=-1;errorNode.focus();}
 }
 async function refresh(){
  if(busy)return;lock(true);
- try{const meta=await realRepository.initializePreferences(prefResult.value);preferences=meta.preferences;preferencesRevision=meta.preferencesRevision;settingsReady=true;applyTheme();renderSettings();const latest=await repository.load();data=latest;available=true;if(editingKind)editRevision=data.revision;$('save-status').textContent='最新データを読み込みました。開いている入力内容はそのままです。';$('save-status').dataset.error='false';}
+ try{const meta=await realRepository.initializePreferences(prefResult.value);preferences=meta.preferences;preferencesRevision=meta.preferencesRevision;settingsReady=true;applyTheme();renderSettings();const latest=await repository.load();data=latest;available=true;if(editingKind)editRevision=data.revision;$('save-status').textContent=editingKind?'最新データを読み込みました。開いている入力内容はそのままです。':'学習データを読み込みました。';$('save-status').dataset.error='false';}
  catch(error){if(demo){data=await demoRepository.load();available=true;}else available=false;showError(error);}
  finally{render();lock(false);}
 }
@@ -130,7 +132,7 @@ $('main').addEventListener('change',async event=>{
  const id=event.target.dataset.task;if(!id)return;
  if(busy){render();return;}
  await save({type:'setTaskStatus',id,status:event.target.checked?'completed':'unstarted'});
- document.querySelector(`[data-task="${id}"]`)?.focus();
+ visibleTarget(`[data-task="${id}"]`)?.focus();
 });
 $('main').addEventListener('click',event=>{
  if(busy)return;const day=event.target.closest('[data-date]');if(day){selectedDate=day.dataset.date;viewState.plans.from=selectedDate;viewState.plans.mode='day';viewState.plans.page=0;syncFilters();render();remember();navigate('plans');}
@@ -141,6 +143,14 @@ $('main').addEventListener('click',event=>{
  const item=event.target.closest('[data-edit-item]');if(item)openEditor('item',item.dataset.editItem);
  const plan=event.target.closest('[data-plan-item]');if(plan)openEditor('task',null,{itemId:plan.dataset.planItem});
 });
+$('main').addEventListener('click',async event=>{
+ const trigger=event.target.closest('[data-unarchive-item],[data-unarchive-plan]');if(!trigger||busy)return;
+ const item=trigger.hasAttribute('data-unarchive-item'),id=item?trigger.dataset.unarchiveItem:trigger.dataset.unarchivePlan;
+ const selector=item?'[data-unarchive-item]':'[data-unarchive-plan]';
+ const saved=await save({type:item?'restoreItem':'restoreSchedule',id});
+ if(saved)$('save-status').textContent=item?'学習項目を復帰しました。関連する予定は、学習計画のアーカイブ済み一覧から個別に復帰できます。':'予定を復帰しました。日付・完了状態・過去の実績は変更していません。';
+ (visibleTarget(selector)||$('page-heading')).focus();
+});
 $('project-edit').addEventListener('click',()=>openEditor('project'));
 $('task-add').addEventListener('click',()=>openEditor('task'));
 $('item-add').addEventListener('click',()=>openEditor('item'));
@@ -148,7 +158,7 @@ $('add-record').addEventListener('click',()=>openEditor('record'));
 for(const kind of ['record','task','item','project']){
  const dialog=$(`${kind}-dialog`),form=$(`${kind}-form`);
  dialog.addEventListener('cancel',event=>{if(busy||(dirty()&&!confirm('未保存の入力を破棄して閉じますか？')))event.preventDefault();});
- dialog.addEventListener('close',()=>{if(!dialog.open){editingKind=null;editingId=null;editRevision=null;initialForm='';const target=returnFocus?document.querySelector(returnFocus):null;requestAnimationFrame(()=>{(target&&!target.closest('[hidden]')?target:$('page-heading')).focus();});}});
+ dialog.addEventListener('close',()=>{if(!dialog.open){editingKind=null;editingId=null;editRevision=null;initialForm='';const target=returnFocus?visibleTarget(returnFocus):null;requestAnimationFrame(()=>{(target&&!target.closest('[hidden]')?target:$('page-heading')).focus();});}});
  form.querySelector('[data-refresh]').addEventListener('click',async()=>{
   if(busy||!confirm('入力を残して最新データを読み込みます。現在の保存内容を確認してから保存してください。'))return;
   await refresh();if(!available)return;
@@ -170,7 +180,7 @@ for(const kind of ['record','task','item','project']){
  });
  $(`${kind}-delete`).addEventListener('click',async()=>{
   if(busy)return;
-  const warning=kind==='project'?'このプロジェクトの計画・記録・進捗をすべて削除します。元に戻せません。削除しますか？':kind==='item'?'この学習項目と関連する予定を一覧から外します。過去の実績と参照情報は残ります。削除しますか？':kind==='task'?'この予定を一覧から外します。学習項目と過去の実績は残ります。削除しますか？':'この学習記録を削除しますか？';
+  const warning=kind==='project'?'このプロジェクトの計画・記録・進捗をすべて削除します。元に戻せません。削除しますか？':kind==='item'?'この学習項目と関連する予定を一覧から外します。過去の実績と参照情報は残ります。復帰は項目と予定を個別に行います。アーカイブしますか？':kind==='task'?'この予定を一覧から外します。学習項目と過去の実績は残り、後から復帰できます。アーカイブしますか？':'この学習記録を削除しますか？';
   if(!confirm(warning))return;
   if(await save({type:'delete'+(kind==='task'?'Schedule':kind[0].toUpperCase()+kind.slice(1)),id:editingId},form))dialog.close();
  });
@@ -195,7 +205,7 @@ $('settings').addEventListener('change',async event=>{
 });
 $('hidden-cards').addEventListener('click',async event=>{
  if(busy)return;const id=event.target.closest('[data-restore]')?.dataset.restore;if(!id)return;
- const next=structuredClone(preferences);next.visibility[id]=true;await persistPreferences(next);document.querySelector(`[data-card="${id}"]`)?.focus();
+ const next=structuredClone(preferences);next.visibility[id]=true;await persistPreferences(next);const card=$('card-'+id);if(card&&!card.hidden){card.tabIndex=-1;card.focus();}else $('settings-toggle').focus();
 });
 aiController=mountAI({navigate,repository:realRepository,isBusy:()=>busy,isDemo:()=>demo,lock,onError:showError,getDate:()=>selectedDate,onSaved:result=>{data=result;available=true;render();$('save-status').dataset.error='false';$('save-status').textContent='AI更新JSONの全件を保存しました。';}});
 backupController=mountBackup({navigate,repository:realRepository,isBusy:()=>busy,isDemo:()=>demo,lock,onError:showError,onRestore:result=>{

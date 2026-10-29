@@ -1,3 +1,4 @@
+import {runPolishUI} from './ui-polish.test.js';
 import {runNavigationUI} from './ui-navigation.test.js';
 import {runAIStorageTests} from './ai-storage.test.js';
 import {runAIUI} from './ai-ui.test.js';
@@ -63,9 +64,9 @@ try {
  const before=JSON.stringify(await repo.load());doc.querySelector('#add-record').click();await submit(doc,'record',{subject:'デモだけ',minutes:'5'});assert(JSON.stringify(await repo.load())===before,'demo isolated');
  frame.contentWindow.location.reload();await wait();await ready(frame);doc=frame.contentDocument;assert(!doc.querySelector('.recent-list').textContent.includes('デモだけ'),'demo resets');
  doc.querySelector('#switch-mode').click();await until(()=>doc.querySelector('#mode-label').textContent==='自分の学習','return real');assert(doc.querySelector('.recent-list').textContent.includes('更新した記録'),'real survives demo');
- await runModelUI(frame);await runAIUI(frame);const navigationTests=await runNavigationUI(frame);doc=frame.contentDocument;
+ await runModelUI(frame);await runAIUI(frame);const navigationTests=await runNavigationUI(frame);const polishTests=await runPolishUI(frame);doc=frame.contentDocument;
  // Durable expected snapshot read by a separate Chrome process.
  snapshot=await repo.load();localStorage.setItem('stardia.test.expected',JSON.stringify(snapshot));await repo.close();
  doc.querySelector('#settings-toggle').click();assert(doc.querySelector('#settings').open,'settings opens on demand');doc.querySelector('#settings-close').click();assert(!doc.querySelector('#settings').open,'settings collapsed');
- result.textContent=`PASS: ${navigationTests} navigation/UX tests; ${aiTests} AI storage tests; AI GUI flow; ${modelTests} migration tests; GUI item/schedule flow; ${storageTests} IndexedDB tests; ${backupTests} backup tests; UI CRUD, errors, reload, demo isolation, two tabs`;result.dataset.result='passed';
+ result.textContent=`PASS: ${polishTests} polish/archive tests; ${navigationTests} navigation/UX tests; ${aiTests} AI storage tests; AI GUI flow; ${modelTests} migration tests; GUI item/schedule flow; ${storageTests} IndexedDB tests; ${backupTests} backup tests; UI CRUD, errors, reload, demo isolation, two tabs`;result.dataset.result='passed';
 } catch(error){result.textContent='FAIL: '+error.stack;result.dataset.result='failed';}

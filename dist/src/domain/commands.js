@@ -30,6 +30,8 @@ export function applyCommand(current,command,expectedRevision){
    case 'addItem':p.items.push({id:crypto.randomUUID(),title:text(input.title,'項目名',100).trim(),description:input.description??'',archived:false});break;
    case 'updateItem':Object.assign(active(item(command.id)),{title:text(input.title,'項目名',100).trim(),description:input.description??''});break;
    case 'deleteItem':active(item(command.id)).archived=true;for(const s of p.schedules)if(s.itemId===command.id)s.archived=true;break;
+   case 'restoreItem':{const i=item(command.id);if(!i.archived)throw new Error('この学習項目は既に有効です。');i.archived=false;break;}
+   case 'restoreSchedule':{const s=plan(command.id);if(!s.archived)throw new Error('この予定は既に有効です。');if(item(s.itemId).archived)throw new Error('先に関連する学習項目を復帰してください。');s.archived=false;break;}
    case 'addSchedule':p.schedules.push({id:crypto.randomUUID(),...scheduleInput(input),status:'unstarted',archived:false});break;
    case 'updateSchedule':{const s=active(plan(command.id));Object.assign(s,scheduleInput(input,s));break;}
    case 'deleteSchedule':case 'deleteTask':active(plan(command.id)).archived=true;break;

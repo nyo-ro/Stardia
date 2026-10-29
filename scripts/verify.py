@@ -41,7 +41,7 @@ try:
             print(run(common+[base+'/tests/restart.html',str(profile),str(width),str(height),str(LOCAL/('restart-'+label))],env))
             print(run(common+[base+'/dist/#demo',str(LOCAL/('preview-'+label)),str(width),str(height),str(LOCAL/label),'preview'],env))
         for label,width,height in [('desktop',1440,900),('mobile',390,844)]:
-            print(run(common+[base+'/dist/',str(LOCAL/('capture-'+label)),str(width),str(height),str(LOCAL/'verification'/'v0.0.6'/label/'capture'),'capture'],env))
+            print(run(common+[base+'/dist/',str(LOCAL/('capture-'+label)),str(width),str(height),str(LOCAL/'verification'/'v0.0.7'/label/'capture'),'capture'],env))
         print(run(common+[base+'/tests/backup-browser.html?mode=export',str(LOCAL/'browser-desktop'),'1440','1000',str(LOCAL/'backup-export'),'export'],env))
         print(run(common+[base+'/tests/backup-browser.html?mode=import',str(LOCAL/'backup-recipient'),'390','844',str(LOCAL/'backup-import')],env))
     else: print('SKIP real browser checks: Chrome/Edge unavailable')

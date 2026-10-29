@@ -16,17 +16,17 @@ export function mountAI({navigate,repository,isBusy,isDemo,lock,onSaved,onError,
  });
  $('ai-inspect').addEventListener('click',async()=>{
   if(isBusy()||isDemo())return;reset();lock(true);
-  try{const update=parseUpdate($('ai-source').value),preview=await prepareUpdate(await repository.load(),update);pending=update;
+  try{const update=parseUpdate($('ai-source').value),snapshot=await repository.load(),preview=await prepareUpdate(snapshot,update);pending=update;
    const summary=document.createElement('p');summary.textContent=`追加 ${preview.counts.add}件 / 変更 ${preview.counts.update}件 / 削除（アーカイブ）${preview.counts.delete}件`;$('ai-preview').append(summary);
-   const operationNames={addRecord:'実績を追加',updateRecord:'実績を変更',addSchedule:'予定を追加',updateSchedule:'予定を変更',deleteSchedule:'削除（実績は保持）'};
-   const labels={date:'日付',subject:'学習した内容',minutes:'時間（分）',note:'メモ',itemId:'学習項目ID',scheduleId:'関連予定ID',required:'必須／任意',status:'完了状態',archived:'アーカイブ'};
-   const display=(key,value)=>value===null||value===undefined?'—':key==='required'?(value?'必須':'任意'):key==='archived'?(value?'アーカイブ済み':'有効'):key==='status'?(value==='completed'?'完了':'未完了'):String(value);
+   const operationNames={addRecord:'実績を追加',updateRecord:'実績を変更',addSchedule:'予定を追加',updateSchedule:'予定を変更',deleteSchedule:'予定をアーカイブ（実績は保持）'};
+   const labels={date:'日付',subject:'学習した内容',minutes:'時間（分）',note:'メモ',itemId:'学習項目',scheduleId:'関連予定',required:'必須／任意',status:'完了状態',archived:'アーカイブ'};
+   const display=(key,value)=>value===null||value===undefined?'—':key==='required'?(value?'必須':'任意'):key==='archived'?(value?'アーカイブ済み':'有効'):key==='status'?(value==='completed'?'完了':'未完了'):key==='itemId'?(snapshot.project.items.find(i=>i.id===value)?.title||'新規項目'):key==='scheduleId'?(snapshot.project.schedules.find(s=>s.id===value)?.date||'今回追加する予定'):String(value);
    for(const change of preview.changes){
     const section=document.createElement('section');section.className='ai-change '+(change.type.startsWith('delete')?'change-delete':change.type.startsWith('add')?'change-add':'change-update');
     const title=document.createElement('h3');title.textContent=`${operationNames[change.type]}：${change.item} ／ ${change.after.date}`;section.append(title);
     const table=document.createElement('table'),head=document.createElement('thead');head.innerHTML='<tr><th scope="col">項目</th><th scope="col">変更前</th><th scope="col">変更後</th></tr>';table.append(head);const body=document.createElement('tbody');
     for(const [key,label]of Object.entries(labels)){if(!Object.hasOwn(change.after,key))continue;const changed=change.before?.[key]!==change.after[key];if(!changed&&!['date','subject'].includes(key))continue;const row=document.createElement('tr');if(changed)row.className='changed-field';const name=document.createElement('th');name.scope='row';name.textContent=label+(changed?'（変更）':'');row.append(name);for(const value of [change.before?.[key],change.after[key]]){const cell=document.createElement('td');cell.textContent=display(key,value);row.append(cell);}body.append(row);}table.append(body);section.append(table);
-    const preserved=document.createElement('p');preserved.className='muted small';preserved.textContent=`対象ID：${change.id} ／ 保持する関連実績：${change.preservedRecordIds.length}件`;section.append(preserved);
+    const preserved=document.createElement('p');preserved.className='muted small';preserved.textContent=`保持する関連実績：${change.preservedRecordIds.length}件（ID・参照情報は「JSON全文・関連IDを確認」へ）`;section.append(preserved);
     const details=document.createElement('details'),summary=document.createElement('summary'),raw=document.createElement('pre');summary.textContent='JSON全文・関連IDを確認';raw.textContent=JSON.stringify(change,null,2);details.append(summary,raw);section.append(details);$('ai-preview').append(section);
    }
    const warning=document.createElement('p');warning.className='review-warning';warning.textContent=preview.warnings.join('\n')||'予定変更で過去の実績は変更しません。';$('ai-preview').append(warning);status('まだ保存していません。日付・学習項目・変更前後を確認してから一括適用してください。');$('ai-input').open=false;$('ai-preview').tabIndex=-1;$('ai-preview').focus();$('ai-preview').scrollIntoView({block:'start'});
